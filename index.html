@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Home | FindBack</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="home">
+
+<header class="topbar">
+  <nav class="nav">
+    <a class="brand" href="index.html">FindBack</a>
+    <div class="navlinks">
+      <a data-page="home" href="index.html">Home</a>
+      <a data-page="lost" href="report-lost.html">Report Lost</a>
+      <a data-page="found" href="report-found.html">Report Found</a>
+      <a data-page="browse" href="browse.html">Browse Items</a>
+      <a data-page="matches" href="matches.html">Possible Matches</a>
+      <a data-page="mine" href="my-reports.html">My Reports</a>
+      <a data-page="about" href="about.html">About</a>
+    </div>
+  </nav>
+</header>
+
+
+<main class="container">
+  <section class="hero">
+    <div>
+      <div class="kicker">Campus Lost & Found Website</div>
+      <h1>Lost something? Found something? Help it get back.</h1>
+      <p>
+        FindBack is a simple lost-and-found management website where users can report missing items,
+        report found items, search existing reports, view details and track the current status.
+      </p>
+      <div class="action-row">
+        <a class="btn btn-primary" href="browse.html">Browse Items</a>
+        <a class="btn btn-outline" href="report-lost.html">Report Lost Item</a>
+      </div>
+    </div>
+
+    <div class="hero-card">
+      <h2>Simple Workflow</h2>
+      <div class="mini">1. Submit a Lost or Found report</div>
+      <div class="mini">2. Search and filter existing reports</div>
+      <div class="mini">3. Compare and connect possible matches</div>
+      <div class="mini">4. Mark both reports Returned after recovery</div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card stat"><div class="label">ACTIVE LOST</div><div class="value" id="lostCount">0</div></div>
+    <div class="card stat"><div class="label">ACTIVE FOUND</div><div class="value" id="foundCount">0</div></div>
+    <div class="card stat"><div class="label">RETURNED</div><div class="value" id="returnedCount">0</div></div>
+    <div class="card stat"><div class="label">TOTAL REPORTS</div><div class="value" id="totalCount">0</div></div>
+  </section>
+
+  <section style="margin-top:30px">
+    <div class="section-title">
+      <div>
+        <h2>Recent Reports</h2>
+        <p>Latest Lost and Found submissions stored in this browser.</p>
+      </div>
+      <a class="btn btn-outline" href="browse.html">View All</a>
+    </div>
+    <div id="recentItems" class="item-grid"></div>
+  </section>
+</main>
+
+<footer>FindBack • Academic Project • Built with HTML, CSS and JavaScript</footer>
+<script src="script.js"></script>
+</body>
+</html>

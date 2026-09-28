@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Report Found | FindBack</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="found">
+
+<header class="topbar">
+  <nav class="nav">
+    <a class="brand" href="index.html">FindBack</a>
+    <div class="navlinks">
+      <a data-page="home" href="index.html">Home</a>
+      <a data-page="lost" href="report-lost.html">Report Lost</a>
+      <a data-page="found" href="report-found.html">Report Found</a>
+      <a data-page="browse" href="browse.html">Browse Items</a>
+      <a data-page="matches" href="matches.html">Possible Matches</a>
+      <a data-page="mine" href="my-reports.html">My Reports</a>
+      <a data-page="about" href="about.html">About</a>
+    </div>
+  </nav>
+</header>
+
+
+<main class="container">
+  <div class="section-title">
+    <div>
+      <h1>Report Found Item</h1>
+      <p>Provide clear information so the item can be identified easily.</p>
+    </div>
+  </div>
+
+  <div id="formMessage" style="display:none"></div>
+
+  <section class="card form-card">
+    <form id="reportForm" novalidate>
+      <div class="form-row">
+        <div>
+          <label>Item Name</label>
+          <input name="name" minlength="2" required placeholder="e.g. Black Wallet">
+        </div>
+        <div>
+          <label>Category</label>
+          <select name="category" required>
+            <option>Phone</option>
+            <option>Wallet</option>
+            <option>ID Card</option>
+            <option>Bag</option>
+            <option>Keys</option>
+            <option>Electronics</option>
+            <option>Book</option>
+            <option>Other</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div>
+          <label>Found Location</label>
+          <input name="location" minlength="2" required placeholder="e.g. Central Library">
+        </div>
+        <div>
+          <label>Date</label>
+          <input type="date" name="date" required>
+        </div>
+      </div>
+
+      <label>Description</label>
+      <textarea name="description" minlength="10" required placeholder="Color, brand, special marks or any useful identifying details..."></textarea>
+      <div class="form-help">Use at least 10 characters.</div>
+
+      <label>Contact Number</label>
+      <input name="contact" required placeholder="01712345678">
+      <div class="form-help">Use a valid Bangladesh mobile number.</div>
+
+      <button class="btn btn-primary" type="submit" style="margin-top:16px">Submit Found Report</button>
+    </form>
+  </section>
+</main>
+
+<footer>FindBack • Academic Project • Built with HTML, CSS and JavaScript</footer>
+<script src="script.js"></script>
+</body>
+</html>

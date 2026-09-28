@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browse Items | FindBack</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="browse">
+
+<header class="topbar">
+  <nav class="nav">
+    <a class="brand" href="index.html">FindBack</a>
+    <div class="navlinks">
+      <a data-page="home" href="index.html">Home</a>
+      <a data-page="lost" href="report-lost.html">Report Lost</a>
+      <a data-page="found" href="report-found.html">Report Found</a>
+      <a data-page="browse" href="browse.html">Browse Items</a>
+      <a data-page="matches" href="matches.html">Possible Matches</a>
+      <a data-page="mine" href="my-reports.html">My Reports</a>
+      <a data-page="about" href="about.html">About</a>
+    </div>
+  </nav>
+</header>
+
+
+<main class="container">
+  <div class="section-title">
+    <div>
+      <h1>Browse Items</h1>
+      <p>Search and filter all Lost and Found reports.</p>
+    </div>
+  </div>
+
+  <section class="card">
+    <div class="toolbar">
+      <input id="search" placeholder="Search item, location or description...">
+
+      <select id="typeFilter">
+        <option>All</option>
+        <option>Lost</option>
+        <option>Found</option>
+      </select>
+
+      <select id="category">
+        <option>All</option>
+        <option>Phone</option>
+        <option>Wallet</option>
+        <option>ID Card</option>
+        <option>Bag</option>
+        <option>Keys</option>
+        <option>Electronics</option>
+        <option>Book</option>
+        <option>Other</option>
+      </select>
+
+      <select id="status">
+        <option>All</option>
+        <option>Lost</option>
+        <option>Matched</option>
+        <option>Found</option>
+        <option>Claimed</option>
+        <option>Returned</option>
+      </select>
+    </div>
+  </section>
+
+  <section id="itemGrid" class="item-grid" style="margin-top:18px"></section>
+</main>
+
+<footer>FindBack • Academic Project • Built with HTML, CSS and JavaScript</footer>
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edit Report | FindBack</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="edit">
+
+<header class="topbar">
+  <nav class="nav">
+    <a class="brand" href="index.html">FindBack</a>
+    <div class="navlinks">
+      <a data-page="home" href="index.html">Home</a>
+      <a data-page="lost" href="report-lost.html">Report Lost</a>
+      <a data-page="found" href="report-found.html">Report Found</a>
+      <a data-page="browse" href="browse.html">Browse Items</a>
+      <a data-page="matches" href="matches.html">Possible Matches</a>
+      <a data-page="mine" href="my-reports.html">My Reports</a>
+      <a data-page="about" href="about.html">About</a>
+    </div>
+  </nav>
+</header>
+
+
+<main class="container">
+  <div class="section-title">
+    <div>
+      <h1>Edit Report</h1>
+      <p>Correct or update previously submitted report information.</p>
+    </div>
+  </div>
+
+  <div id="formMessage" style="display:none"></div>
+
+  <div id="notFound" class="empty" style="display:none">
+    <strong>Report cannot be edited.</strong>
+    The report may not exist or it was not submitted from this browser.
+    <div style="margin-top:14px"><a class="btn btn-primary" href="my-reports.html">Back to My Reports</a></div>
+  </div>
+
+  <section class="card form-card">
+    <form id="editForm" novalidate>
+      <div class="form-row">
+        <div>
+          <label>Item Name</label>
+          <input name="name" minlength="2" required>
+        </div>
+
+        <div>
+          <label>Category</label>
+          <select name="category" required>
+            <option>Phone</option>
+            <option>Wallet</option>
+            <option>ID Card</option>
+            <option>Bag</option>
+            <option>Keys</option>
+            <option>Electronics</option>
+            <option>Book</option>
+            <option>Other</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div>
+          <label>Location</label>
+          <input name="location" minlength="2" required>
+        </div>
+        <div>
+          <label>Date</label>
+          <input type="date" name="date" required>
+        </div>
+      </div>
+
+      <label>Description</label>
+      <textarea name="description" minlength="10" required></textarea>
+
+      <label>Contact Number</label>
+      <input name="contact" required>
+
+      <button class="btn btn-primary" type="submit" style="margin-top:16px">Save Changes</button>
+    </form>
+  </section>
+</main>
+
+<footer>FindBack • Academic Project • Built with HTML, CSS and JavaScript</footer>
+<script src="script.js"></script>
+</body>
+</html>

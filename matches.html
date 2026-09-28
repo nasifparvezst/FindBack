@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Possible Matches | FindBack</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="matches">
+<header class="topbar">
+  <nav class="nav">
+    <a class="brand" href="index.html">FindBack</a>
+    <div class="navlinks">
+      <a data-page="home" href="index.html">Home</a>
+      <a data-page="lost" href="report-lost.html">Report Lost</a>
+      <a data-page="found" href="report-found.html">Report Found</a>
+      <a data-page="browse" href="browse.html">Browse Items</a>
+      <a data-page="matches" href="matches.html">Possible Matches</a>
+      <a data-page="mine" href="my-reports.html">My Reports</a>
+      <a data-page="about" href="about.html">About</a>
+    </div>
+  </nav>
+</header>
+
+<main class="container">
+  <div class="section-title">
+    <div>
+      <h1>Possible Matches</h1>
+      <p>Find Lost and Found reports that may describe the same physical item.</p>
+    </div>
+  </div>
+
+  <div class="notice">
+    The system suggests pairs using category, item name, location and date. A user must confirm the match manually before the reports are connected.
+  </div>
+
+  <div class="workflow-line">
+    Lost + Found → Match Reports → Lost becomes <b>Matched</b> & Found becomes <b>Claimed</b> → Item returned → Both become <b>Returned</b>
+  </div>
+
+  <section class="match-section">
+    <div class="section-title">
+      <div>
+        <h2>Suggested Pairs</h2>
+        <p>Unmatched active reports with similar information.</p>
+      </div>
+    </div>
+    <div id="possibleMatches" class="match-list"></div>
+  </section>
+
+  <section class="match-section">
+    <div class="section-title">
+      <div>
+        <h2>Connected Reports</h2>
+        <p>Pairs that have already been matched, including completed returns.</p>
+      </div>
+    </div>
+    <div id="activeMatches" class="match-list"></div>
+  </section>
+</main>
+
+<footer>FindBack • Academic Project • Built with HTML, CSS and JavaScript</footer>
+<script src="script.js"></script>
+</body>
+</html>

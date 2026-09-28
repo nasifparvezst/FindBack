@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About | FindBack</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="about">
+
+<header class="topbar">
+  <nav class="nav">
+    <a class="brand" href="index.html">FindBack</a>
+    <div class="navlinks">
+      <a data-page="home" href="index.html">Home</a>
+      <a data-page="lost" href="report-lost.html">Report Lost</a>
+      <a data-page="found" href="report-found.html">Report Found</a>
+      <a data-page="browse" href="browse.html">Browse Items</a>
+      <a data-page="matches" href="matches.html">Possible Matches</a>
+      <a data-page="mine" href="my-reports.html">My Reports</a>
+      <a data-page="about" href="about.html">About</a>
+    </div>
+  </nav>
+</header>
+
+
+<main class="container">
+  <div class="section-title">
+    <div>
+      <h1>About FindBack</h1>
+      <p>A frontend-only Lost and Found Management System.</p>
+    </div>
+  </div>
+
+  <section class="two-col">
+    <div class="card">
+      <h3>Project Purpose</h3>
+      <p class="muted">
+        FindBack helps campus users report lost and found items, browse reports, search and filter items,
+        view full details, connect a Lost report with a related Found report, and track whether an item is still missing, matched, claimed or returned.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>Technology</h3>
+      <p class="muted">
+        HTML is used for page structure, CSS for responsive design and JavaScript for validation,
+        dynamic content, search/filter, editing, status updates and browser localStorage.
+      </p>
+    </div>
+  </section>
+
+  <section style="margin-top:24px">
+    <div class="section-title">
+      <div>
+        <h2>Project Workflow</h2>
+        <p>The main functional flow of the system.</p>
+      </div>
+    </div>
+
+    <div class="steps">
+      <div class="step"><span>1</span><h3>Submit</h3><p class="muted">Report an item as Lost or Found.</p></div>
+      <div class="step"><span>2</span><h3>Browse</h3><p class="muted">Search and filter submitted reports.</p></div>
+      <div class="step"><span>3</span><h3>Match</h3><p class="muted">Connect a similar Lost report with a Found report.</p></div>
+      <div class="step"><span>4</span><h3>Return</h3><p class="muted">Confirm recovery and mark both connected reports Returned.</p></div>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:24px">
+    <h3>Status Flow</h3>
+    <p><strong>Lost report:</strong> Lost → <em>Match with a Found report</em> → Matched → Returned</p>
+    <p><strong>Found report:</strong> Found → <em>Match with a Lost report</em> → Claimed → Returned</p>
+    <p class="muted">When the user confirms a pair, both reports are linked by report ID. When the item is returned, one action updates both reports to Returned.</p>
+  </section>
+</main>
+
+<footer>FindBack • Academic Project • Built with HTML, CSS and JavaScript</footer>
+<script src="script.js"></script>
+</body>
+</html>
