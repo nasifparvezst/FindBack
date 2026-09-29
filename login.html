@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login | FindBack</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="login">
+
+<header class="topbar">
+  <nav class="nav">
+    <a class="brand" href="index.html">FindBack</a>
+    <div class="navlinks"></div>
+  </nav>
+</header>
+
+<main class="container">
+  <div class="section-title"><div>
+    <h1>Login</h1>
+    <p>Only university accounts ending with @seu.edu.bd can log in.</p>
+  </div></div>
+
+  <div id="formMessage" style="display:none"></div>
+
+  <section class="card form-card">
+    <form id="authForm" novalidate>
+      <label>University Email</label>
+      <input type="email" name="email" required placeholder="yourid@seu.edu.bd">
+
+      <label>Password</label>
+      <input type="password" name="password" required>
+
+      <button class="btn btn-primary" type="submit" style="margin-top:16px">Login</button>
+      <p class="form-help">No account? <a href="register.html"><strong>Register here</strong></a></p>
+    </form>
+  </section>
+</main>
+
+<footer>FindBack • Academic Project • Built with HTML, CSS and JavaScript</footer>
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register | FindBack</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="register">
+
+<header class="topbar">
+  <nav class="nav">
+    <a class="brand" href="index.html">FindBack</a>
+    <div class="navlinks"></div>
+  </nav>
+</header>
+
+<main class="container">
+  <div class="section-title"><div>
+    <h1>Create Account</h1>
+    <p>Registration is limited to @seu.edu.bd email addresses.</p>
+  </div></div>
+
+  <div id="formMessage" style="display:none"></div>
+
+  <section class="card form-card">
+    <form id="authForm" novalidate>
+      <div class="form-row">
+        <div>
+          <label>Full Name</label>
+          <input name="name" required>
+        </div>
+        <div>
+          <label>Mobile Number</label>
+          <input name="phone" required placeholder="01712345678">
+        </div>
+      </div>
+
+      <label>University Email</label>
+      <input type="email" name="email" required placeholder="yourid@seu.edu.bd">
+
+      <div class="form-row">
+        <div>
+          <label>Password</label>
+          <input type="password" name="password" required minlength="6">
+        </div>
+        <div>
+          <label>Confirm Password</label>
+          <input type="password" name="confirmPassword" required>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" type="submit" style="margin-top:16px">Register</button>
+      <p class="form-help">Already registered? <a href="login.html"><strong>Login</strong></a></p>
+    </form>
+  </section>
+</main>
+
+<footer>FindBack • Academic Project • Built with HTML, CSS and JavaScript</footer>
+<script src="script.js"></script>
+</body>
+</html>

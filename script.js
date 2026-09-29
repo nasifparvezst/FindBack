@@ -1,10 +1,212 @@
 
-const FB_KEY = "findback_final_v3";
+const FB_KEY = "findback_final_v4";
+const SESSION_KEY = "findback_session_v4";
+const ALLOWED_DOMAIN = "@seu.edu.bd";
+const ADMIN_EMAIL = "admin@seu.edu.bd";
+const ADMIN_PASSWORD = "Admin@123";
+const PUBLIC_PAGES = ["login", "register"];
+const NOTIFY_MIN_SCORE = 6;
+
+/* --------------------------
+   AUTH HELPERS
+   (Academic demo only: real security needs a backend)
+-------------------------- */
+
+function hashPassword(password){
+  const str = "findback::" + password;
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for(let i = 0; i < str.length; i++){
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
+}
+
+function getCurrentUser(){
+  const id = Number(localStorage.getItem(SESSION_KEY));
+  if(!id) return null;
+  return loadData().users.find(u => u.id === id) || null;
+}
+
+function isAdmin(user = getCurrentUser()){
+  return !!user && user.role === "admin";
+}
+
+function canManage(item, user = getCurrentUser()){
+  return !!user && !!item && (isAdmin(user) || item.ownerId === user.id);
+}
+
+function canManagePair(a, b, user = getCurrentUser()){
+  return canManage(a, user) || canManage(b, user);
+}
+
+function canReturnPair(a, b, user = getCurrentUser()){
+  if(!user) return false;
+  const lost = a.type === "Lost" ? a : b;
+  return isAdmin(user) || lost.ownerId === user.id;
+}
+
+function partnerOf(item){
+  return item.matchedWith ? loadData().items.find(x => x.id === item.matchedWith) : null;
+}
+
+function returnActionsFor(item, small){
+  const cls = small ? "btn btn-success btn-small" : "btn btn-success";
+  const redirect = small ? "" : ", true";
+  if(!canManage(item) || item.status === "Returned") return "";
+
+  if(item.matchedWith){
+    const partner = partnerOf(item);
+    if(partner && canReturnPair(item, partner)){
+      return `<button class="${cls}" onclick="markPairReturned(${item.id}${redirect})">Mark Both Returned</button>`;
+    }
+    return `<span class="small muted">Waiting for the Lost report owner to confirm return.</span>`;
+  }
+
+  const label = item.type === "Lost" ? "I Got My Item Back" : "I Handed It Over";
+  return `<a class="${cls}" href="matches.html">Find Match</a>
+    <button class="${cls}" onclick="markDirectReturned(${item.id}${redirect})">${label}</button>`;
+}
+
+function logout(){
+  localStorage.removeItem(SESSION_KEY);
+  location.href = "login.html";
+}
+
+function guardPage(page){
+  const user = getCurrentUser();
+  if(!PUBLIC_PAGES.includes(page) && !user){ location.replace("login.html"); return false; }
+  if(PUBLIC_PAGES.includes(page) && user){ location.replace("index.html"); return false; }
+  if(page === "admin" && !isAdmin(user)){ location.replace("index.html"); return false; }
+  return true;
+}
+
+function isValidSeuEmail(email){
+  return /^[a-z0-9._%+-]+@seu\.edu\.bd$/.test(email);
+}
+
+/* --------------------------
+   NOTIFICATIONS
+-------------------------- */
+
+function notify(data, userId, text, link){
+  if(!userId || !data.users.some(u => u.id === userId)) return;
+  data.notifications.push({
+    id: Date.now() * 1000 + Math.floor(Math.random() * 1000),
+    userId,
+    text,
+    link: link || "notifications.html",
+    read: false,
+    createdAt: Date.now()
+  });
+}
+
+function unreadCount(user){
+  if(!user) return 0;
+  return loadData().notifications.filter(n => n.userId === user.id && !n.read).length;
+}
+
+function notifyPair(data, actor, a, b, text){
+  [a, b].forEach(it => {
+    if(it && it.ownerId && it.ownerId !== actor.id){
+      notify(data, it.ownerId, text, "details.html?id=" + it.id);
+    }
+  });
+}
+
+function notifyPossibleMatches(data, newItem){
+  const opposite = newItem.type === "Lost" ? "Found" : "Lost";
+  let count = 0;
+
+  data.items.forEach(other => {
+    if(other.type !== opposite || other.matchedWith || other.status !== opposite) return;
+
+    const lost = newItem.type === "Lost" ? newItem : other;
+    const found = newItem.type === "Found" ? newItem : other;
+    const result = calculateMatchScore(lost, found);
+
+    if(result.score >= NOTIFY_MIN_SCORE){
+      count++;
+      if(other.ownerId && other.ownerId !== newItem.ownerId){
+        notify(
+          data,
+          other.ownerId,
+          `A new ${newItem.type.toLowerCase()} report "${newItem.name}" may match your ${other.type.toLowerCase()} report "${other.name}".`,
+          "details.html?id=" + newItem.id
+        );
+      }
+    }
+  });
+
+  return count;
+}
+
+/* --------------------------
+   IMAGE HELPERS
+-------------------------- */
+
+function validImage(item){
+  return typeof item.image === "string" && item.image.startsWith("data:image/");
+}
+
+function itemThumb(item){
+  return validImage(item)
+    ? `<div class="item-icon has-photo"><img src="${escapeHTML(item.image)}" alt="${escapeHTML(item.name)}"></div>`
+    : `<div class="item-icon">${iconFor(item.category)}</div>`;
+}
+
+function detailVisual(item){
+  return validImage(item)
+    ? `<div class="big-icon has-photo"><img src="${escapeHTML(item.image)}" alt="${escapeHTML(item.name)}"></div>`
+    : `<div class="big-icon">${iconFor(item.category)}</div>`;
+}
+
+function compressImage(file, maxSize = 800, quality = 0.7){
+  return new Promise((resolve, reject) => {
+    if(!file.type.startsWith("image/")) return reject(new Error("Please choose an image file (JPG or PNG)."));
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read the image."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("The selected file is not a valid image."));
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function readImageField(form){
+  const input = form.elements["image"];
+  const file = input && input.files[0];
+  if(!file) return null;
+  if(file.size > 8 * 1024 * 1024) throw new Error("Image is too large. Maximum size is 8MB.");
+  return compressImage(file);
+}
 
 function loadData(){
   const saved = localStorage.getItem(FB_KEY);
   if(saved){
-    try { return JSON.parse(saved); }
+    try {
+      const parsed = JSON.parse(saved);
+      parsed.items = parsed.items || [];
+      parsed.users = parsed.users || [];
+      parsed.notifications = parsed.notifications || [];
+      return parsed;
+    }
     catch(e){ localStorage.removeItem(FB_KEY); }
   }
 
@@ -12,6 +214,18 @@ function loadData(){
   const dateText = today.toISOString().slice(0,10);
 
   const data = {
+    users: [
+      {
+        id: 1,
+        name: "System Admin",
+        email: ADMIN_EMAIL,
+        phone: "01700000000",
+        passwordHash: hashPassword(ADMIN_PASSWORD),
+        role: "admin",
+        createdAt: Date.now()
+      }
+    ],
+    notifications: [],
     items: [
       {
         id: 1001,
@@ -23,7 +237,7 @@ function loadData(){
         description: "Black leather wallet with a small silver logo on the front.",
         contact: "01700000001",
         status: "Lost",
-        mine: true,
+        ownerId: 0,
         createdAt: Date.now() - 400000
       },
       {
@@ -36,7 +250,7 @@ function loadData(){
         description: "Black leather wallet found beside a cafeteria table.",
         contact: "01700000002",
         status: "Found",
-        mine: false,
+        ownerId: 0,
         createdAt: Date.now() - 300000
       },
       {
@@ -49,7 +263,7 @@ function loadData(){
         description: "Blue university ID card inside a transparent plastic holder.",
         contact: "01700000003",
         status: "Lost",
-        mine: true,
+        ownerId: 0,
         createdAt: Date.now() - 200000
       },
       {
@@ -62,7 +276,7 @@ function loadData(){
         description: "A black 32GB USB flash drive found near the front computers.",
         contact: "01700000004",
         status: "Returned",
-        mine: false,
+        ownerId: 0,
         createdAt: Date.now() - 100000
       }
     ]
@@ -73,7 +287,13 @@ function loadData(){
 }
 
 function saveData(data){
-  localStorage.setItem(FB_KEY, JSON.stringify(data));
+  try {
+    localStorage.setItem(FB_KEY, JSON.stringify(data));
+    return true;
+  } catch(e){
+    alert("Browser storage is full. Use a smaller photo or delete old reports.");
+    return false;
+  }
 }
 
 function escapeHTML(value){
@@ -184,7 +404,7 @@ function itemCard(item){
 
   return `
     <article class="card item-card">
-      <div class="item-icon">${iconFor(item.category)}</div>
+      ${itemThumb(item)}
       <div style="flex:1;min-width:0">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
           <h3>${escapeHTML(item.name)}</h3>
@@ -220,10 +440,12 @@ function renderHome(){
 
 function initReportForm(type){
   const form = document.getElementById("reportForm");
+  const user = getCurrentUser();
   const dateInput = form.querySelector('input[name="date"]');
   dateInput.max = new Date().toISOString().slice(0,10);
+  form.elements["contact"].value = user.phone || "";
 
-  form.addEventListener("submit", e => {
+  form.addEventListener("submit", async e => {
     e.preventDefault();
     clearFormMessage();
 
@@ -243,6 +465,10 @@ function initReportForm(type){
       return;
     }
 
+    let image = null;
+    try { image = await readImageField(form); }
+    catch(err){ showFormMessage(escapeHTML(err.message)); return; }
+
     const data = loadData();
     const newItem = {
       id: Date.now(),
@@ -254,49 +480,87 @@ function initReportForm(type){
       description: values.description.trim(),
       contact: normalizePhone(values.contact),
       status: type === "Lost" ? "Lost" : "Found",
-      mine: true,
+      ownerId: user.id,
+      ownerName: user.name,
       createdAt: Date.now()
     };
+    if(image) newItem.image = image;
 
     data.items.push(newItem);
-    saveData(data);
+    const matchCount = notifyPossibleMatches(data, newItem);
+    if(!saveData(data)) return;
+
     form.reset();
+    form.elements["contact"].value = user.phone || "";
 
     const matchLink = `<a href="matches.html"><strong>Check Possible Matches</strong></a>`;
+    const matchText = matchCount > 0
+      ? ` ${matchCount} possible match${matchCount > 1 ? "es" : ""} found and the related owner${matchCount > 1 ? "s were" : " was"} notified.`
+      : "";
     showFormMessage(
-      `${escapeHTML(type)} item report submitted successfully. ${matchLink}`,
+      `${escapeHTML(type)} item report submitted successfully.${matchText} ${matchLink}`,
       "success"
     );
   });
 }
 
 function renderBrowse(){
-  const query = (document.getElementById("search").value || "").trim().toLowerCase();
-  const category = document.getElementById("category").value;
-  const status = document.getElementById("status").value;
-  const type = document.getElementById("typeFilter").value;
+  const val = id => document.getElementById(id).value;
+  const tokens = val("search").trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const category = val("category");
+  const status = val("status");
+  const type = val("typeFilter");
+  const from = val("dateFrom");
+  const to = val("dateTo");
+  const sort = val("sortBy");
 
   const items = [...loadData().items]
     .filter(item => {
       const haystack = `${item.name} ${item.location} ${item.description} ${item.category}`.toLowerCase();
       return (
-        haystack.includes(query) &&
+        tokens.every(t => haystack.includes(t)) &&
         (category === "All" || item.category === category) &&
         (status === "All" || item.status === status) &&
-        (type === "All" || item.type === type)
+        (type === "All" || item.type === type) &&
+        (!from || item.date >= from) &&
+        (!to || item.date <= to)
       );
     })
-    .sort((a,b) => (b.createdAt || b.id) - (a.createdAt || a.id));
+    .sort((a,b) => {
+      if(sort === "oldest") return (a.createdAt || a.id) - (b.createdAt || b.id);
+      if(sort === "dateDesc") return b.date.localeCompare(a.date);
+      if(sort === "dateAsc") return a.date.localeCompare(b.date);
+      if(sort === "name") return a.name.localeCompare(b.name);
+      return (b.createdAt || b.id) - (a.createdAt || a.id);
+    });
+
+  document.getElementById("resultCount").textContent =
+    `${items.length} report${items.length === 1 ? "" : "s"} found`;
 
   const grid = document.getElementById("itemGrid");
   grid.innerHTML = items.length
     ? items.map(itemCard).join("")
-    : `<div class="empty"><strong>No matching items found.</strong>Try changing your search text or filters.</div>`;
+    : `<div class="empty"><strong>No matching items found.</strong>Try changing your search text, dates or filters.</div>`;
+}
+
+function initBrowse(){
+  const ids = ["search","category","status","typeFilter","dateFrom","dateTo","sortBy"];
+  ids.forEach(id => {
+    document.getElementById(id).addEventListener(id === "search" ? "input" : "change", renderBrowse);
+  });
+  document.getElementById("clearFilters").addEventListener("click", () => {
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      el.value = el.tagName === "SELECT" ? el.options[0].value : "";
+    });
+    renderBrowse();
+  });
+  renderBrowse();
 }
 
 function renderMyReports(){
   const myItems = [...loadData().items]
-    .filter(item => item.mine)
+    .filter(item => item.ownerId === getCurrentUser().id)
     .sort((a,b) => (b.createdAt || b.id) - (a.createdAt || a.id));
 
   const grid = document.getElementById("mineGrid");
@@ -304,7 +568,7 @@ function renderMyReports(){
   if(!myItems.length){
     grid.innerHTML = `
       <div class="empty">
-        <strong>No reports submitted from this browser.</strong>
+        <strong>You have not submitted any reports yet.</strong>
         Use Report Lost or Report Found to create your first report.
       </div>`;
     return;
@@ -315,16 +579,11 @@ function renderMyReports(){
       ? `<div class="match-note">🔗 Matched with report #${escapeHTML(item.matchedWith)}</div>`
       : `<div class="match-note subtle">No report has been matched yet.</div>`;
 
-    let statusAction = "";
-    if(item.matchedWith && item.status !== "Returned"){
-      statusAction = `<button class="btn btn-success btn-small" onclick="markPairReturned(${item.id})">Mark Both Returned</button>`;
-    } else if(!item.matchedWith && item.status !== "Returned"){
-      statusAction = `<a class="btn btn-success btn-small" href="matches.html">Find Match</a>`;
-    }
+    const statusAction = returnActionsFor(item, true);
 
     return `
       <article class="card item-card">
-        <div class="item-icon">${iconFor(item.category)}</div>
+        ${itemThumb(item)}
         <div style="flex:1;min-width:0">
           <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
             <h3>${escapeHTML(item.name)}</h3>
@@ -354,6 +613,11 @@ function deleteReport(id){
   const item = data.items.find(x => x.id === id);
 
   if(!item) return;
+
+  if(!canManage(item)){
+    alert("You can only delete your own reports.");
+    return;
+  }
 
   if(item.matchedWith){
     alert("This report is connected to another report. Undo the match from Possible Matches before deleting it.");
@@ -387,14 +651,9 @@ function renderDetails(){
     ? `<div class="detail-box"><span class="label">Connected Report</span><a href="details.html?id=${item.matchedWith}">Report #${escapeHTML(item.matchedWith)}</a></div>`
     : `<div class="detail-box"><span class="label">Connected Report</span>Not matched yet</div>`;
 
-  let matchAction = "";
-  if(item.matchedWith && item.status !== "Returned"){
-    matchAction = `<button class="btn btn-success" onclick="markPairReturned(${item.id}, true)">Mark Both Returned</button>`;
-  } else if(!item.matchedWith && item.status !== "Returned"){
-    matchAction = `<a class="btn btn-success" href="matches.html">Find Possible Match</a>`;
-  }
+  const matchAction = returnActionsFor(item, false);
 
-  const ownerActions = item.mine
+  const ownerActions = canManage(item)
     ? `
       <a class="btn btn-warning" href="edit-report.html?id=${item.id}">Edit Report</a>
       <a class="btn btn-outline" href="my-reports.html">My Reports</a>
@@ -402,7 +661,7 @@ function renderDetails(){
     : "";
 
   target.innerHTML = `
-    <div class="big-icon">${iconFor(item.category)}</div>
+    ${detailVisual(item)}
 
     <section class="card">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -418,7 +677,9 @@ function renderDetails(){
         <div class="detail-box"><span class="label">Date</span>${escapeHTML(item.date)}</div>
         <div class="detail-box"><span class="label">Location</span>${escapeHTML(item.location)}</div>
         <div class="detail-box"><span class="label">Contact</span>${escapeHTML(item.contact)}</div>
+        <div class="detail-box"><span class="label">Reported By</span>${escapeHTML(item.ownerName || "Demo data")}</div>
         ${matchInfo}
+        ${item.returnedDirect ? `<div class="detail-box"><span class="label">Return Info</span>Returned directly without a matched report${item.returnNote ? ": " + escapeHTML(item.returnNote) : ""}</div>` : ""}
       </div>
 
       <div class="action-row">
@@ -437,7 +698,7 @@ function initEditReport(){
   const form = document.getElementById("editForm");
   const notFound = document.getElementById("notFound");
 
-  if(!item || !item.mine){
+  if(!item || !canManage(item)){
     form.style.display = "none";
     notFound.style.display = "block";
     return;
@@ -451,11 +712,18 @@ function initEditReport(){
   form.elements["contact"].value = item.contact;
   form.querySelector('input[name="date"]').max = new Date().toISOString().slice(0,10);
 
+  if(validImage(item)){
+    document.getElementById("currentImage").innerHTML =
+      `<img class="edit-thumb" src="${escapeHTML(item.image)}" alt="Current photo">`;
+  } else {
+    document.getElementById("removeImageRow").style.display = "none";
+  }
+
   if(item.matchedWith){
     showFormMessage("This report is currently matched. You can edit its information, but changing details may affect how the match appears.", "success");
   }
 
-  form.addEventListener("submit", e => {
+  form.addEventListener("submit", async e => {
     e.preventDefault();
     clearFormMessage();
 
@@ -475,6 +743,10 @@ function initEditReport(){
       return;
     }
 
+    let newImage = null;
+    try { newImage = await readImageField(form); }
+    catch(err){ showFormMessage(escapeHTML(err.message)); return; }
+
     item.name = values.name.trim();
     item.category = values.category;
     item.location = values.location.trim();
@@ -482,7 +754,10 @@ function initEditReport(){
     item.description = values.description.trim();
     item.contact = normalizePhone(values.contact);
 
-    saveData(data);
+    if(newImage) item.image = newImage;
+    else if(form.elements["removeImage"].checked) delete item.image;
+
+    if(!saveData(data)) return;
     showFormMessage(
       `Report updated successfully. <a href="details.html?id=${item.id}"><strong>View updated report</strong></a>`,
       "success"
@@ -552,6 +827,7 @@ function calculateMatchScore(lost, found){
 }
 
 function getPossibleMatches(){
+  const user = getCurrentUser();
   const items = loadData().items;
   const lostItems = items.filter(x =>
     x.type === "Lost" &&
@@ -571,7 +847,7 @@ function getPossibleMatches(){
       const result = calculateMatchScore(lost, found);
 
       // Require a reasonable similarity. Same category alone is enough to show as a possible match.
-      if(result.score >= 4){
+      if(result.score >= 4 && (isAdmin(user) || canManagePair(lost, found, user))){
         candidates.push({
           lost,
           found,
@@ -644,7 +920,7 @@ function renderMatches(){
   activeBox.innerHTML = pairedLostReports.length
     ? pairedLostReports.map(lost => {
         const found = data.items.find(x => x.id === lost.matchedWith);
-        if(!found) return "";
+        if(!found || !canManagePair(lost, found)) return "";
 
         const returned = lost.status === "Returned" && found.status === "Returned";
 
@@ -678,7 +954,7 @@ function renderMatches(){
               ${
                 returned
                 ? ""
-                : `<button class="btn btn-success" onclick="markPairReturned(${lost.id})">Mark Both Returned</button>
+                : `${canReturnPair(lost, found) ? `<button class="btn btn-success" onclick="markPairReturned(${lost.id})">Mark Both Returned</button>` : `<span class="small muted">Only the Lost report owner can confirm return.</span>`}
                    <button class="btn btn-danger btn-small" onclick="undoMatch(${lost.id})">Undo Match</button>`
               }
             </div>
@@ -690,11 +966,17 @@ function renderMatches(){
 
 function matchReports(lostId, foundId){
   const data = loadData();
+  const user = getCurrentUser();
   const lost = data.items.find(x => x.id === lostId);
   const found = data.items.find(x => x.id === foundId);
 
   if(!lost || !found){
     alert("One of the reports could not be found.");
+    return;
+  }
+
+  if(!canManagePair(lost, found, user)){
+    alert("You can only match pairs that include your own report.");
     return;
   }
 
@@ -727,12 +1009,14 @@ function matchReports(lostId, foundId){
   lost.matchedAt = Date.now();
   found.matchedAt = lost.matchedAt;
 
-  saveData(data);
-  renderMatches();
+  notifyPair(data, user, lost, found, `Your report "${lost.name}" has been connected with a matching ${lost.type === "Lost" ? "found" : "lost"} report.`);
+
+  if(saveData(data)) renderMatches();
 }
 
 function markPairReturned(reportId, redirectAfter=false){
   const data = loadData();
+  const user = getCurrentUser();
   const first = data.items.find(x => x.id === reportId);
 
   if(!first || !first.matchedWith){
@@ -746,6 +1030,11 @@ function markPairReturned(reportId, redirectAfter=false){
     return;
   }
 
+  if(!canReturnPair(first, second, user)){
+    alert("Only the owner of the Lost report (or an admin) can confirm that the item was returned.");
+    return;
+  }
+
   const confirmed = confirm(
     `Confirm that "${first.name}" has been returned to its owner? Both connected reports will become Returned.`
   );
@@ -756,7 +1045,8 @@ function markPairReturned(reportId, redirectAfter=false){
   first.returnedAt = Date.now();
   second.returnedAt = first.returnedAt;
 
-  saveData(data);
+  notifyPair(data, user, first, second, `Your report "${first.name}" was marked as Returned.`);
+  if(!saveData(data)) return;
 
   if(redirectAfter){
     location.reload();
@@ -770,8 +1060,48 @@ function markPairReturned(reportId, redirectAfter=false){
   }
 }
 
+function markDirectReturned(reportId, redirectAfter=false){
+  const data = loadData();
+  const user = getCurrentUser();
+  const item = data.items.find(x => x.id === reportId);
+
+  if(!item) return;
+
+  if(!canManage(item, user)){
+    alert("You can only update your own reports.");
+    return;
+  }
+
+  if(item.matchedWith){
+    alert("This report is matched with another report. Use Mark Both Returned instead.");
+    return;
+  }
+
+  if(item.status === "Returned") return;
+
+  const question = item.type === "Lost"
+    ? `Confirm that you got "${item.name}" back? Add an optional note (e.g. how it was returned):`
+    : `Confirm that you handed "${item.name}" over to its owner? Add an optional note:`;
+  const note = prompt(question, "");
+  if(note === null) return;
+
+  item.status = "Returned";
+  item.returnedAt = Date.now();
+  item.returnedDirect = true;
+  if(note.trim()) item.returnNote = note.trim().slice(0, 200);
+
+  if(!saveData(data)) return;
+
+  if(redirectAfter){
+    location.reload();
+    return;
+  }
+  if(document.body.dataset.page === "mine") renderMyReports();
+}
+
 function undoMatch(reportId){
   const data = loadData();
+  const user = getCurrentUser();
   const first = data.items.find(x => x.id === reportId);
 
   if(!first || !first.matchedWith){
@@ -783,6 +1113,11 @@ function undoMatch(reportId){
 
   if(!second){
     alert("The connected report could not be found.");
+    return;
+  }
+
+  if(!canManagePair(first, second, user)){
+    alert("You can only undo pairs that include your own report.");
     return;
   }
 
@@ -805,29 +1140,232 @@ function undoMatch(reportId){
   delete lost.matchedAt;
   delete found.matchedAt;
 
-  saveData(data);
-  renderMatches();
+  notifyPair(data, user, lost, found, `The match for your report "${first.name}" was undone. It is active again.`);
+
+  if(saveData(data)) renderMatches();
 }
 
+/* --------------------------
+   NAVBAR, AUTH PAGES, NOTIFICATIONS, ADMIN
+-------------------------- */
+
+function buildNav(){
+  const nav = document.querySelector(".navlinks");
+  if(!nav) return;
+  const user = getCurrentUser();
+
+  if(!user){
+    nav.innerHTML = `
+      <a data-page="login" href="login.html">Login</a>
+      <a data-page="register" href="register.html">Register</a>`;
+    return;
+  }
+
+  const unread = unreadCount(user);
+  nav.innerHTML = `
+    <a data-page="home" href="index.html">Home</a>
+    <a data-page="lost" href="report-lost.html">Report Lost</a>
+    <a data-page="found" href="report-found.html">Report Found</a>
+    <a data-page="browse" href="browse.html">Browse Items</a>
+    <a data-page="matches" href="matches.html">Possible Matches</a>
+    <a data-page="mine" href="my-reports.html">My Reports</a>
+    <a data-page="notifications" href="notifications.html">🔔 Notifications${unread ? ` (${unread})` : ""}</a>
+    ${isAdmin(user) ? `<a data-page="admin" href="admin.html">Admin</a>` : ""}
+    <a data-page="about" href="about.html">About</a>
+    <a href="#" onclick="logout();return false">Logout (${escapeHTML(user.name.split(" ")[0])})</a>`;
+}
+
+function initRegister(){
+  const form = document.getElementById("authForm");
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    clearFormMessage();
+
+    const fd = new FormData(form);
+    const name = String(fd.get("name")).trim();
+    const email = String(fd.get("email")).trim().toLowerCase();
+    const phone = String(fd.get("phone")).trim();
+    const password = String(fd.get("password"));
+    const confirmPassword = String(fd.get("confirmPassword"));
+    const errors = [];
+
+    if(name.length < 2) errors.push("Name must contain at least 2 characters.");
+    if(!isValidSeuEmail(email)) errors.push(`Only university emails ending with ${ALLOWED_DOMAIN} can register.`);
+    if(!isValidBangladeshPhone(phone)) errors.push("Enter a valid Bangladesh mobile number, for example 01712345678.");
+    if(password.length < 6) errors.push("Password must contain at least 6 characters.");
+    if(password !== confirmPassword) errors.push("Passwords do not match.");
+
+    const data = loadData();
+    if(isValidSeuEmail(email) && data.users.some(u => u.email === email)){
+      errors.push("An account with this email already exists.");
+    }
+
+    if(errors.length){
+      showFormMessage(errors.map(x => `• ${escapeHTML(x)}`).join("<br>"));
+      return;
+    }
+
+    const user = {
+      id: Date.now(),
+      name,
+      email,
+      phone: normalizePhone(phone),
+      passwordHash: hashPassword(password),
+      role: "student",
+      createdAt: Date.now()
+    };
+    data.users.push(user);
+    if(!saveData(data)) return;
+
+    localStorage.setItem(SESSION_KEY, String(user.id));
+    location.href = "index.html";
+  });
+}
+
+function initLogin(){
+  const form = document.getElementById("authForm");
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    clearFormMessage();
+
+    const fd = new FormData(form);
+    const email = String(fd.get("email")).trim().toLowerCase();
+    const password = String(fd.get("password"));
+
+    if(!isValidSeuEmail(email)){
+      showFormMessage(`Only university emails ending with ${ALLOWED_DOMAIN} can log in.`);
+      return;
+    }
+
+    const user = loadData().users.find(u => u.email === email);
+    if(!user || user.passwordHash !== hashPassword(password)){
+      showFormMessage("Invalid email or password.");
+      return;
+    }
+
+    localStorage.setItem(SESSION_KEY, String(user.id));
+    location.href = "index.html";
+  });
+}
+
+function renderNotifications(){
+  const user = getCurrentUser();
+  const list = loadData().notifications
+    .filter(n => n.userId === user.id)
+    .sort((a,b) => b.createdAt - a.createdAt);
+
+  document.getElementById("notifList").innerHTML = list.length
+    ? list.map(n => `
+      <a class="card notif ${n.read ? "" : "unread"}" href="#" onclick="openNotification(${n.id});return false">
+        <span>🔔 ${escapeHTML(n.text)}</span>
+        <small class="muted">${escapeHTML(new Date(n.createdAt).toLocaleString())}</small>
+      </a>`).join("")
+    : `<div class="empty"><strong>No notifications yet.</strong>You will be notified when a report may match yours.</div>`;
+}
+
+function openNotification(id){
+  const data = loadData();
+  const n = data.notifications.find(x => x.id === id);
+  if(!n) return;
+  n.read = true;
+  saveData(data);
+  location.href = n.link || "notifications.html";
+}
+
+function markAllNotificationsRead(){
+  const data = loadData();
+  const user = getCurrentUser();
+  data.notifications.forEach(n => { if(n.userId === user.id) n.read = true; });
+  saveData(data);
+  renderNotifications();
+  buildNav();
+  setActiveNav();
+}
+
+function renderAdmin(){
+  const data = loadData();
+  const items = data.items;
+  const count = fn => items.filter(fn).length;
+
+  const stats = [
+    ["TOTAL USERS", data.users.length],
+    ["LOST REPORTS", count(x => x.type === "Lost")],
+    ["FOUND REPORTS", count(x => x.type === "Found")],
+    ["MATCHED / CLAIMED", count(x => x.status === "Matched" || x.status === "Claimed")],
+    ["RETURNED", count(x => x.status === "Returned")],
+    ["TOTAL REPORTS", items.length]
+  ];
+  document.getElementById("adminStats").innerHTML = stats
+    .map(([label, value]) => `<div class="card stat"><div class="label">${label}</div><div class="value">${value}</div></div>`)
+    .join("");
+
+  const sorted = [...items].sort((a,b) => (b.createdAt || b.id) - (a.createdAt || a.id));
+  document.getElementById("adminReports").innerHTML = sorted.length
+    ? sorted.map(item => `
+      <tr>
+        <td>#${item.id}</td>
+        <td>${escapeHTML(item.type)}</td>
+        <td>${escapeHTML(item.name)}</td>
+        <td><span class="badge status-${item.status.toLowerCase()}">${escapeHTML(item.status)}</span></td>
+        <td>${escapeHTML(item.ownerName || "Demo data")}</td>
+        <td>
+          <a class="btn btn-outline btn-small" href="details.html?id=${item.id}">View</a>
+          <button class="btn btn-danger btn-small" onclick="adminDeleteReport(${item.id})">Delete</button>
+        </td>
+      </tr>`).join("")
+    : `<tr><td colspan="6">No reports.</td></tr>`;
+
+  document.getElementById("adminUsers").innerHTML = data.users.map(u => `
+    <tr>
+      <td>${escapeHTML(u.name)}</td>
+      <td>${escapeHTML(u.email)}</td>
+      <td>${escapeHTML(u.phone)}</td>
+      <td>${escapeHTML(u.role)}</td>
+      <td>${items.filter(x => x.ownerId === u.id).length}</td>
+    </tr>`).join("");
+}
+
+function adminDeleteReport(id){
+  if(!isAdmin()) return;
+  const data = loadData();
+  const item = data.items.find(x => x.id === id);
+  if(!item) return;
+
+  if(!confirm(`Delete report #${item.id} "${item.name}"? This cannot be undone.`)) return;
+
+  const other = data.items.find(x => x.id === item.matchedWith);
+  if(other){
+    delete other.matchedWith;
+    delete other.matchedAt;
+    if(other.status !== "Returned") other.status = other.type;
+    notify(data, other.ownerId, `The report connected to your "${other.name}" report was removed by an admin. Your report is active again.`, "details.html?id=" + other.id);
+  }
+  notify(data, item.ownerId, `Your report "${item.name}" was removed by an admin.`, "my-reports.html");
+
+  data.items = data.items.filter(x => x.id !== id);
+  if(saveData(data)) renderAdmin();
+}
+
+const FB_BLOCKED = !guardPage(document.body.dataset.page);
+
 document.addEventListener("DOMContentLoaded", () => {
+  if(FB_BLOCKED) return;
+
+  buildNav();
   setActiveNav();
 
   const page = document.body.dataset.page;
 
+  if(page === "login") initLogin();
+  if(page === "register") initRegister();
   if(page === "home") renderHome();
   if(page === "lost") initReportForm("Lost");
   if(page === "found") initReportForm("Found");
-
-  if(page === "browse"){
-    ["search","category","status","typeFilter"].forEach(id => {
-      const element = document.getElementById(id);
-      element.addEventListener(id === "search" ? "input" : "change", renderBrowse);
-    });
-    renderBrowse();
-  }
-
+  if(page === "browse") initBrowse();
   if(page === "matches") renderMatches();
   if(page === "mine") renderMyReports();
   if(page === "details") renderDetails();
   if(page === "edit") initEditReport();
+  if(page === "notifications") renderNotifications();
+  if(page === "admin") renderAdmin();
 });

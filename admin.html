@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin | FindBack</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-page="admin">
+
+<header class="topbar">
+  <nav class="nav">
+    <a class="brand" href="index.html">FindBack</a>
+    <div class="navlinks"></div>
+  </nav>
+</header>
+
+<main class="container">
+  <div class="section-title"><div>
+    <h1>Admin Dashboard</h1>
+    <p>Overview of users and reports.</p>
+  </div></div>
+
+  <section class="grid" id="adminStats"></section>
+
+  <section style="margin-top:28px">
+    <h2>All Reports</h2>
+    <div class="table-wrap card">
+      <table>
+        <thead><tr><th>ID</th><th>Type</th><th>Item</th><th>Status</th><th>Reported By</th><th>Actions</th></tr></thead>
+        <tbody id="adminReports"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section style="margin-top:28px">
+    <h2>Users</h2>
+    <div class="table-wrap card">
+      <table>
+        <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Reports</th></tr></thead>
+        <tbody id="adminUsers"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<footer>FindBack • Academic Project • Built with HTML, CSS and JavaScript</footer>
+<script src="script.js"></script>
+</body>
+</html>

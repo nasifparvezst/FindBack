@@ -36,7 +36,7 @@
 
   <div id="notFound" class="empty" style="display:none">
     <strong>Report cannot be edited.</strong>
-    The report may not exist or it was not submitted from this browser.
+    The report may not exist or you do not have permission to edit it.
     <div style="margin-top:14px"><a class="btn btn-primary" href="my-reports.html">Back to My Reports</a></div>
   </div>
 
@@ -76,6 +76,12 @@
 
       <label>Description</label>
       <textarea name="description" minlength="10" required></textarea>
+
+      <label>Item Photo (optional)</label>
+      <div id="currentImage"></div>
+      <input type="file" name="image" accept="image/*">
+      <div class="form-help">Choose a new photo only if you want to replace the current one.</div>
+      <div id="removeImageRow"><label class="check-line"><input type="checkbox" name="removeImage"> Remove current photo</label></div>
 
       <label>Contact Number</label>
       <input name="contact" required>

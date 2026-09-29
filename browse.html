@@ -34,15 +34,15 @@
 
   <section class="card">
     <div class="toolbar">
-      <input id="search" placeholder="Search item, location or description...">
+      <label class="small muted">Search <input id="search" placeholder="Keywords, e.g. black wallet library"></label>
 
-      <select id="typeFilter">
+      <label class="small muted">Report Type <select id="typeFilter">
         <option>All</option>
         <option>Lost</option>
         <option>Found</option>
-      </select>
+      </select></label>
 
-      <select id="category">
+      <label class="small muted">Category <select id="category">
         <option>All</option>
         <option>Phone</option>
         <option>Wallet</option>
@@ -52,17 +52,31 @@
         <option>Electronics</option>
         <option>Book</option>
         <option>Other</option>
-      </select>
+      </select></label>
 
-      <select id="status">
+      <label class="small muted">Status <select id="status">
         <option>All</option>
         <option>Lost</option>
         <option>Matched</option>
         <option>Found</option>
         <option>Claimed</option>
         <option>Returned</option>
-      </select>
+      </select></label>
     </div>
+
+    <div class="toolbar" style="margin-top:10px">
+      <label class="small muted">Date From <input type="date" id="dateFrom"></label>
+      <label class="small muted">Date To <input type="date" id="dateTo"></label>
+      <label class="small muted">Sort By <select id="sortBy">
+        <option value="newest">Newest reported</option>
+        <option value="oldest">Oldest reported</option>
+        <option value="dateDesc">Item date: latest</option>
+        <option value="dateAsc">Item date: earliest</option>
+        <option value="name">Name A-Z</option>
+      </select></label>
+      <button type="button" class="btn btn-outline" id="clearFilters">Clear Filters</button>
+    </div>
+    <p class="small muted" id="resultCount" style="margin:10px 0 0"></p>
   </section>
 
   <section id="itemGrid" class="item-grid" style="margin-top:18px"></section>
