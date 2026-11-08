@@ -114,15 +114,18 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   }, [client]);
 
   useEffect(() => {
-    void refresh();
-    const { data: { subscription } } = client.auth.onAuthStateChange(() => {
-      // Avoid awaiting a Supabase query *inside* the Auth change callback.
-      setTimeout(() => { void refresh(); }, 0);
-    });
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleRefresh = () => {
+      clearTimeout(refreshTimer);
+      // Run outside the Auth callback and coalesce initial/session refreshes.
+      refreshTimer = setTimeout(() => { void refresh(); }, 0);
+    };
+    scheduleRefresh();
+    const { data: { subscription } } = client.auth.onAuthStateChange(scheduleRefresh);
     const interval = setInterval(() => { void refresh(); }, 30_000);
     const onFocus = () => { if (document.visibilityState === "visible") void refresh(); };
     document.addEventListener("visibilitychange", onFocus);
-    return () => { subscription.unsubscribe(); clearInterval(interval); document.removeEventListener("visibilitychange", onFocus); };
+    return () => { subscription.unsubscribe(); clearTimeout(refreshTimer); clearInterval(interval); document.removeEventListener("visibilitychange", onFocus); };
   }, [client, refresh]);
 
   const user = useMemo(() => db.users.find(u => u.id === userId && !u.suspended) || null, [db.users, userId]);

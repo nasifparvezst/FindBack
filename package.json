@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "tsc --target ES2020 --module commonjs --outDir .test-build src/lib/types.ts src/lib/matching.ts src/lib/validation.ts src/lib/statistics.ts src/lib/duplicates.ts && node --test tests/*.test.cjs"
   },
   "dependencies": {

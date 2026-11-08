@@ -21,15 +21,19 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!DEMO_MODE) { setReady(true); return; }
-    try {
-      const saved = localStorage.getItem(DB_KEY);
-      const parsed: DemoDB = saved ? JSON.parse(saved) as DemoDB : createDemoDB();
-      if (!parsed || !Array.isArray(parsed.users) || !Array.isArray(parsed.reports) || !Array.isArray(parsed.claims) || !Array.isArray(parsed.messages) || !Array.isArray(parsed.notifications) || !Array.isArray(parsed.activity)) throw new Error("Invalid demo data");
-      setDB(parsed);
-      setUserId(localStorage.getItem(USER_KEY) || demoUsers[0].id);
-    } catch { setDB(createDemoDB()); setUserId(demoUsers[0].id); }
-    setReady(true);
+    // Hydrate browser storage after mount and cancel the read on an early unmount.
+    const timer = setTimeout(() => {
+      if (!DEMO_MODE) { setReady(true); return; }
+      try {
+        const saved = localStorage.getItem(DB_KEY);
+        const parsed: DemoDB = saved ? JSON.parse(saved) as DemoDB : createDemoDB();
+        if (!parsed || !Array.isArray(parsed.users) || !Array.isArray(parsed.reports) || !Array.isArray(parsed.claims) || !Array.isArray(parsed.messages) || !Array.isArray(parsed.notifications) || !Array.isArray(parsed.activity)) throw new Error("Invalid demo data");
+        setDB(parsed);
+        setUserId(localStorage.getItem(USER_KEY) || demoUsers[0].id);
+      } catch { setDB(createDemoDB()); setUserId(demoUsers[0].id); }
+      setReady(true);
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
   useEffect(() => { if (ready) localStorage.setItem(DB_KEY, JSON.stringify(db)); }, [db, ready]);
   useEffect(() => { if (ready) { if (userId) localStorage.setItem(USER_KEY, userId); else localStorage.removeItem(USER_KEY); } }, [userId, ready]);

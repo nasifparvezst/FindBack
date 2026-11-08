@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowUpRight, CalendarDays, Clock3, MapPin, Package, SearchX, ShieldCheck, ChevronLeft, ChevronRight, Smartphone, Wallet, CreditCard, Backpack, KeyRound, Laptop, BookOpen, type LucideIcon } from "lucide-react";
-import { formatDate, relativeDate, shortId } from "@/lib/format";
+import { formatDate, relativeDate } from "@/lib/format";
 import type { Category, Report } from "@/lib/types";
 
 const categoryIcons: Record<Category, LucideIcon> = {
@@ -14,7 +14,11 @@ export const categoryColors: Record<Category, string> = {
 export function CategoryArt({ category, image, large = false }: { category: Category; image?: string; large?: boolean }) {
   const Icon = categoryIcons[category];
   return <div className={`category-art ${categoryColors[category]} ${large ? "art-large" : ""}`}>
-    {image ? /* eslint-disable-next-line @next/next/no-img-element */ <img className="item-photo" src={image} alt="Uploaded item" /> : <Icon className="category-icon" strokeWidth={1.55} aria-hidden/>}
+    {image ? (
+      // Uploaded photos include browser-local data URLs and already-compressed public images.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img className="item-photo" src={image} alt="Uploaded item" />
+    ) : <Icon className="category-icon" strokeWidth={1.55} aria-hidden/>}
     {!image && <span className="art-circle art-circle-one"/>}{!image && <span className="art-circle art-circle-two"/>}
   </div>;
 }

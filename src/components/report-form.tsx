@@ -204,7 +204,11 @@ export function ReportForm({ type, existing }: { type: ReportType; existing?: Re
                           setError(uploadError instanceof Error ? uploadError.message : "Image upload failed.");
                         }
                       }} />
-                      {form.image ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={form.image} alt="Selected item preview" className="uploaded-preview" /> : <ImagePlus size={27} />}
+                      {form.image ? (
+                        // Preview the compressed data URL directly before it is uploaded.
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={form.image} alt="Selected item preview" className="uploaded-preview" />
+                      ) : <ImagePlus size={27} />}
                       <strong>{fileName || (form.image ? "Change photo" : "Click to upload a photo")}</strong>
                       <small>JPG, PNG or WebP · maximum 6 MB before compression</small>
                     </label>

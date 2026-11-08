@@ -30,6 +30,6 @@ export default function Home() {
       <div className="step-card"><div className="step-top"><span className="step-icon"><Sparkles size={25}/></span><span className="step-number">02 / DISCOVER</span></div><h3>Find a connection</h3><p>Browse reports and explore smart match suggestions based on item details.</p></div>
       <div className="step-card"><div className="step-top"><span className="step-icon"><BadgeCheck size={25}/></span><span className="step-number">03 / REUNITE</span></div><h3>Get it back safely</h3><p>Send a claim request, verify the details privately, and arrange a safe handover.</p></div>
     </div></div></section>
-    <section className="container" style={{paddingTop:40,paddingBottom:66}}><div className="cta-band"><div><span className="eyebrow">Make someone's day</span><h2>Small action. Big difference.</h2><p>Found an item? A quick report could reunite it with its owner.</p></div><Link href="/report/found" className="btn">Report a Found Item <ArrowRight size={18}/></Link></div></section>
+      <section className="container" style={{paddingTop:40,paddingBottom:66}}><div className="cta-band"><div><span className="eyebrow">Make someone&apos;s day</span><h2>Small action. Big difference.</h2><p>Found an item? A quick report could reunite it with its owner.</p></div><Link href="/report/found" className="btn">Report a Found Item <ArrowRight size={18}/></Link></div></section>
   </>;
 }

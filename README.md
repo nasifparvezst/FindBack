@@ -2,7 +2,7 @@
 
 A Next.js 16 + React 19 + TypeScript campus lost-and-found application. Step 3 improves report creation and editing, duplicate warnings, browsing, My Reports management, image privacy and storage cleanup.
 
-> **Release status:** Source code, SQL migrations and automated logic tests are prepared. The tests pass locally in this build environment. A live Supabase project, email delivery, full Next.js production build and multi-user browser testing still need to be completed before deployment.
+> **Release status:** Dependency installation, typecheck, lint, all 17 logic tests and a Next.js production build have passed locally. Demo browser smoke checks also pass. Live Supabase authorization, Auth/Storage, email delivery and full multi-user end-to-end testing remain required before deployment. See `docs/BASELINE_AUDIT.md` for results and remaining work.
 
 ## Requirements
 
@@ -19,11 +19,13 @@ A Next.js 16 + React 19 + TypeScript campus lost-and-found application. Step 3 i
 5. Open **Terminal > New Terminal** and run:
 
 ```sh
-npm install
+npm ci
 npm run dev
 ```
 
 6. Open http://localhost:3000. Stop the server with `Ctrl + C`.
+
+On Windows PowerShell, use `npm.cmd` in place of `npm` if execution policy blocks `npm.ps1`. The committed `package-lock.json` pins the dependency versions used by `npm ci`.
 
 ## Enable the shared Supabase database
 
@@ -74,6 +76,8 @@ npm run build
 ```
 
 `npm test` runs the matching, validation, statistics and duplicate-warning unit tests. A passing unit test suite does not replace live Supabase RLS, Auth, Storage or browser end-to-end testing.
+
+`npm run typecheck` generates Next.js route types before checking TypeScript, so it also works before the first dev server or production build. Lint excludes generated `.test-build` output and supports the Node test runner's CommonJS test files.
 
 ## Scope decisions
 

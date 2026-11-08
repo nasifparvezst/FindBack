@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, ClipboardList, Clock3, PackageCheck, Plus, Search } from "lucide-react";
 import { useApp } from "@/context/app-context";
@@ -41,8 +41,6 @@ export default function MyReports() {
     return haystack.includes(search.trim().toLocaleLowerCase()) && (status === "all" || claim.status === status);
   }), [sourceClaims, db.reports, db.users, tab, search, status]);
 
-  useEffect(() => setPage(1), [tab, search, status]);
-
   if (!user) return <div className="page-section container"><EmptyState title="Sign in to access your reports" description="Sign in to manage reports and claims." actionHref="/login" actionText="Sign in" /></div>;
 
   const currentCount = tab === "reports" ? filteredReports.length : filteredClaims.length;
@@ -70,8 +68,8 @@ export default function MyReports() {
         <button className={tab === "outgoing" ? "active" : ""} onClick={() => changeTab("outgoing")}>My claims ({outgoing.length})</button>
       </div>
       <div className="my-report-filters panel">
-        <div className="field"><label htmlFor="my-search">Search {tab === "reports" ? "reports" : "claims"}</label><div className="search-with-icon"><Search size={16} /><input id="my-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={tab === "reports" ? "Item name, category or location" : "Item, person or claim status"} /></div></div>
-        <div className="field"><label htmlFor="my-status">Status</label><select id="my-status" value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option>{(tab === "reports" ? ["open", "returned"] : ["pending", "approved", "rejected", "completed"]).map((value) => <option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</option>)}</select></div>
+        <div className="field"><label htmlFor="my-search">Search {tab === "reports" ? "reports" : "claims"}</label><div className="search-with-icon"><Search size={16} /><input id="my-search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder={tab === "reports" ? "Item name, category or location" : "Item, person or claim status"} /></div></div>
+        <div className="field"><label htmlFor="my-status">Status</label><select id="my-status" value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="all">All statuses</option>{(tab === "reports" ? ["open", "returned"] : ["pending", "approved", "rejected", "completed"]).map((value) => <option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</option>)}</select></div>
       </div>
       <div className="result-summary">{currentCount} {tab === "reports" ? "reports" : "claims"} found</div>
       {tab === "reports" ? (
