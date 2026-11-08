@@ -2,6 +2,8 @@
 
 Reviewed on 9 November 2026 (Asia/Dhaka), on `codex/baseline-audit`.
 
+This records the Phase 0 baseline. Phase 1 was implemented afterward; see `SMART_MATCHING.md` for the current algorithm and expanded 44-test suite, and `DEPLOYMENT_BN.md` for hosting instructions. No live deployment has been performed.
+
 ## Current implementation
 
 The working application is the Next.js Step 3 project. The previous static HTML version remains in Git history. The existing architecture and design are preserved: Next.js App Router, React, TypeScript, custom CSS, and separate Demo and Supabase Cloud providers.
@@ -45,7 +47,7 @@ The missing-config Cloud checks used `NEXT_PUBLIC_DEMO_MODE=false` with empty UR
 
 ## Remaining risks and development order
 
-1. **Phase 1: matching.** Improve normalization, edge-case coverage and confidence calibration. Exclude same-owner candidate pairs. The scoring function already handles opposite types, categories and brand/color contradictions; extend it rather than rebuilding it. The Matches UI currently hides negative reasons and displays a heuristic score as a percentage.
+1. **Phase 1: matching (implemented locally).** Bangla normalization, missing-field handling, contradiction scoring, date-window checks, owner/pair filtering and explanations are covered by the expanded tests. Negative signals are visible and scores use a 0–100 scale. `SMART_MATCHING.md` documents the heuristic limits and follow-up considerations.
 2. **Phase 2: claims and handover.** Cloud completion currently requires an approved claim but permits the owner/Admin to complete it alone. Add separate party confirmations, cancellation/disputes, locking and auditable Admin overrides in a reviewed additive migration. Demo `markReturned` also needs an approved-claim guard for parity with Cloud mode.
 3. **Phase 3: private Realtime.** Cloud refresh uses actions, tab focus and 30-second polling. Add authorized subscriptions, unread message state and conversation pagination. The current message query loads only the oldest 500 authorized messages.
 4. **Phase 4: Admin moderation.** Extend the existing dashboard with report flags, hide/restore, reasons, filters, analytics and audit coverage. Current report deletion is permanent and cascades to claims/messages. CSV exports ignore filters and need spreadsheet-formula protection; current export fields exclude private contact data.

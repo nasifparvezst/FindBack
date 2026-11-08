@@ -4,7 +4,7 @@ You do not need to install PostgreSQL locally. Supabase hosts the database in th
 
 ## 1. Prepare the project
 
-1. Install Node.js LTS (20.9 or later).
+1. Install Node.js 22 or later (required by the locked Supabase client).
 2. Extract the FindBack ZIP and open the folder containing `package.json` in VS Code.
 3. Copy `.env.example` to `.env.local` in the project root.
 4. Keep `NEXT_PUBLIC_DEMO_MODE=true` until the Supabase setup is complete.

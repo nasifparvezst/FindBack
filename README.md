@@ -2,11 +2,11 @@
 
 A Next.js 16 + React 19 + TypeScript campus lost-and-found application. Step 3 improves report creation and editing, duplicate warnings, browsing, My Reports management, image privacy and storage cleanup.
 
-> **Release status:** Dependency installation, typecheck, lint, all 17 logic tests and a Next.js production build have passed locally. Demo browser smoke checks also pass. Live Supabase authorization, Auth/Storage, email delivery and full multi-user end-to-end testing remain required before deployment. See `docs/BASELINE_AUDIT.md` for results and remaining work.
+> **Release status:** Dependency installation, typecheck, lint, all 44 logic tests and a Next.js production build have passed locally. The Step 3 baseline now includes Phase 1 Smart Matching improvements. Live Supabase authorization, Auth/Storage, email delivery and full multi-user end-to-end testing remain required before deployment. See `docs/BASELINE_AUDIT.md` and `docs/SMART_MATCHING.md` for details.
 
 ## Requirements
 
-- Node.js LTS 20.9 or later and npm
+- Node.js 22 or later and npm (required by the locked Supabase client)
 - VS Code or another code editor
 - A Supabase project only when enabling cloud mode
 
@@ -82,3 +82,9 @@ npm run build
 ## Scope decisions
 
 Campus maps/location finder, advanced student profile features, QR handover and AI image matching are not included in the agreed scope. The Advanced Admin Dashboard remains part of the project.
+
+## Smart Matching and deployment
+
+Smart Matching compares open reports from different owners, normalizes Bangla/Unicode text, explains positive and negative signals, and uses a configurable 30-day date window. Scores are shown out of 100. Read `docs/SMART_MATCHING.md` for weights, confidence limits and tests.
+
+Pushing to GitHub stores code; a hosting deployment is a separate step. This app uses dynamic routes, Auth callbacks and a session proxy, so deploy it with a Next.js-compatible Node host. The current app cannot be published by uploading its source to static GitHub Pages. The Bangla guide in `docs/DEPLOYMENT_BN.md` explains a Demo deployment and later Cloud setup, including how to preview `codex/baseline-audit` before merging it into `main`.
