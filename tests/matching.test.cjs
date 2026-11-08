@@ -1,0 +1,11 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { calculateMatchScore, findMatches } = require('../.test-build/matching.js');
+const base = {type:'lost',category:'Phone',title:'iPhone 15 Pro',brand:'Apple',color:'Black',description:'Black iPhone with blue sticker clear case',location:'Central Library',occurredOn:'2026-11-04',status:'open',ownerId:'a'};
+const found = {...base,type:'found',title:'Found Apple iPhone 15 Pro',description:'iPhone clear case blue sticker',ownerId:'b'};
+test('matching similar phones should be strong',()=>{const result=calculateMatchScore(base,found);assert.ok(result.score>=75,JSON.stringify(result));});
+test('different brand with no identifying overlap must not be suggested',()=>{const result=calculateMatchScore(base,{...found,title:'Samsung Galaxy S22',brand:'Samsung',color:'White',description:'White Android phone at gate',location:'Sports Ground'});assert.ok(result.score<48,JSON.stringify(result));});
+test('different category is never a match',()=>{assert.equal(calculateMatchScore(base,{...found,category:'Wallet'}).score,0);});
+test('two lost reports cannot match',()=>{assert.equal(calculateMatchScore(base,{...found,type:'lost'}).score,0);});
+test('Unicode Bangla words are searchable in scoring',()=>{const a={...base,title:'কালো মোবাইল ফোন',brand:'',description:'কালো মোবাইল ফোনটি',color:''};const b={...found,title:'কালো মোবাইল',brand:'',description:'কালো মোবাইল পাওয়া গেছে',color:''};assert.ok(calculateMatchScore(a,b).score>20);});
+test('only reports involving the current user are shown',()=>{const a={...base,id:'1'};const b={...found,id:'2'};assert.equal(findMatches([a,b],'a').length,1);assert.equal(findMatches([a,b],'outsider').length,0);});
