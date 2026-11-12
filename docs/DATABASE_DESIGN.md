@@ -21,6 +21,8 @@ The current database is Supabase PostgreSQL. The schema is created by the initia
 
 `reports` stores `owner_id`, `type`, `title`, `category`, `brand`, `color`, `location`, `occurred_on`, `description`, `image_path`, `status`, `linked_report_id` and timestamps. Current report status values are `open` and `returned`.
 
+Phase 2 adds claim statuses `cancelled` and `disputed`, party confirmation/review/completion timestamps, issue/resolution reasons and Admin audit reasons. `confirm_handover(claim_id)` derives the caller from `auth.uid()` and completes only after both participants confirm. `manage_claim` handles cancel/dispute and reason-required Admin resolution. Report locks use UUID order before claim locks; approved/disputed claims reserve both target and related reports. `complete_handover(report_id)` is disabled. Existing RLS remains enabled; disputed conversations remain private and writable only by authorized participants/Admin.
+
 `report_contacts` is intentionally separate from public report data. The application does not expose phone numbers on public report pages; communication is handled through private claims and messages.
 
 ## Security model
@@ -40,6 +42,7 @@ Run in filename order in the same Supabase project:
 
 1. `202611050001_initial.sql` -- tables, indexes, RLS, RPC functions, triggers and Storage bucket.
 2. `202611060001_report_management_privacy.sql` -- ID-card photo privacy constraint and browse index.
+3. `202611120001_two_party_handover.sql` -- two-party handover, cancel/dispute workflow, reservation guards and Admin resolution audit.
 
 Do not rerun the initial migration on a populated project. Apply later migrations once, after reviewing their effects.
 

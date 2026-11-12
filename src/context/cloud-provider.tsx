@@ -16,14 +16,19 @@ type ReportRow = {
   created_at: string; updated_at: string;
 };
 type ContactRow = { report_id: string; phone: string };
-type ClaimRow = { id: string; report_id: string; related_report_id: string | null; claimant_id: string; message: string; status: string; created_at: string; updated_at: string };
+type ClaimRow = { id: string; report_id: string; related_report_id: string | null; claimant_id: string; message: string; status: string; created_at: string; updated_at: string;
+  reviewed_at?: string; owner_confirmed_at?: string; claimant_confirmed_at?: string; completed_at?: string; cancelled_at?: string; disputed_at?: string; issue_reason?: string; resolved_at?: string; resolution_reason?: string };
 type MessageRow = { id: string; claim_id: string; sender_id: string; body: string; created_at: string };
 type NoticeRow = { id: string; user_id: string; title: string; body: string; href: string; read_at: string | null; created_at: string };
-type ActionRow = { id: string; admin_id: string; action: string; subject: string; created_at: string };
+type ActionRow = { id: string; admin_id: string; action: string; subject: string; created_at: string; reason?: string };
 
 function rows<T>(data: unknown): T[] { return Array.isArray(data) ? data as T[] : []; }
 function empty(): DemoDB { return { users: [], reports: [], claims: [], messages: [], notifications: [], activity: [] }; }
 function check(result: { error: { message: string } | null }): void { if (result.error) throw new Error(result.error.message); }
+function checkClaimRpc(result: { error: { message: string; code?: string } | null }): void {
+  if (result.error?.code === "PGRST202") throw new Error("Cloud claim workflow needs the Phase 2 migration: 202611120001_two_party_handover.sql. Apply it after the existing migrations, then refresh.");
+  check(result);
+}
 
 // Public item photographs are intentionally shareable. Do not upload ID documents.
 async function storePhoto(client: ReturnType<typeof createSupabaseBrowserClient>, ownerId: string, image: string) {
@@ -93,6 +98,10 @@ export function CloudProvider({ children }: { children: ReactNode }) {
         id: c.id, reportId: c.report_id, relatedReportId: c.related_report_id || undefined,
         claimantId: c.claimant_id, message: c.message, status: c.status as ClaimStatus,
         createdAt: c.created_at, updatedAt: c.updated_at,
+        reviewedAt: c.reviewed_at || undefined, ownerConfirmedAt: c.owner_confirmed_at || undefined,
+        claimantConfirmedAt: c.claimant_confirmed_at || undefined, completedAt: c.completed_at || undefined,
+        cancelledAt: c.cancelled_at || undefined, disputedAt: c.disputed_at || undefined, issueReason: c.issue_reason || undefined,
+        resolvedAt: c.resolved_at || undefined, resolutionReason: c.resolution_reason || undefined,
       }));
       const allMessages: Message[] = rows<MessageRow>(messages.data).map(m => ({
         id: m.id, claimId: m.claim_id, senderId: m.sender_id, body: m.body, createdAt: m.created_at,
@@ -102,7 +111,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
         read: Boolean(n.read_at), createdAt: n.created_at,
       }));
       const activity: Activity[] = rows<ActionRow>(activities.data).map(a => ({
-        id: a.id, actorId: a.admin_id, action: a.action, subject: a.subject, createdAt: a.created_at,
+        id: a.id, actorId: a.admin_id, action: a.action, subject: a.subject, createdAt: a.created_at, reason: a.reason || undefined,
       }));
       setDB({ users, reports: allReports, claims: allClaims, messages: allMessages, notifications: allNotifications, activity });
       setSyncError("");
@@ -191,9 +200,13 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     const result = await client.from("messages").insert({ claim_id: claimId, sender_id: actor.id, body: clean });
     check(result); await refresh();
   };
-  const markReturned = async (reportId: string): Promise<void> => {
-    requireUser(); const result = await client.rpc("complete_handover", { p_report_id: reportId });
-    check(result); await refresh();
+  const confirmHandover = async (claimId: string): Promise<void> => {
+    requireUser(); const result = await client.rpc("confirm_handover", { p_claim_id: claimId });
+    checkClaimRpc(result); await refresh();
+  };
+  const manageClaim = async (claimId: string, action: "cancel" | "dispute" | "resume" | "resolve_cancel", reason: string): Promise<void> => {
+    requireUser(); const result = await client.rpc("manage_claim", { p_claim_id: claimId, p_action: action, p_reason: reason.trim() });
+    checkClaimRpc(result); await refresh();
   };
   const markNotificationRead = async (id: string): Promise<void> => {
     requireUser(); check(await client.rpc("mark_notification_read", { p_id: id })); await refresh();
@@ -210,7 +223,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     ready, db, user: user ? { ...user, email: authEmail || user.email } : null,
     isAdmin, syncError,
     switchUser: notInCloud, registerDemo: notInCloud,
-    addReport, editReport, removeReport, requestClaim, updateClaim, sendMessage, markReturned,
+    addReport, editReport, removeReport, requestClaim, updateClaim, sendMessage, confirmHandover, manageClaim,
     markNotificationRead, markAllRead, suspendUser, resetDemo: notInCloud,
   };
   return <Context.Provider value={value}>{children}</Context.Provider>;

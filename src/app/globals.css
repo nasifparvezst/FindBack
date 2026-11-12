@@ -28,3 +28,15 @@
 .reason-tags .reason-negative{background:#fff0ed;color:#9a3e32}
 .reason-tags .reason-neutral{background:#f1f3f4;color:#626c73}
 .reason-tags b{font-weight:inherit}
+
+/* Claim handover and dispute controls. */
+.claim-chat-heading{display:flex;align-items:center;gap:10px;font-size:17px}
+.claim-summary h2{font-size:18px}.claim-summary h3{font-size:14px;margin-top:22px}
+.claim-summary p{font-size:12px;line-height:1.6;overflow-wrap:anywhere}
+.claim-timeline{list-style:none;padding:0;margin:16px 0}
+.claim-timeline li{border-left:3px solid #dce6e1;padding:4px 0 12px 12px;color:#71877e;font-size:12px}
+.claim-timeline li.done{border-color:#0b977e;color:#176f58}.claim-timeline strong,.claim-timeline small{display:block}
+.claim-timeline small{font-size:10px;margin-top:4px}.claim-controls{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}
+.claim-controls label,.claim-controls small{width:100%;font-size:12px}.claim-controls textarea,.claim-controls select{width:100%;padding:10px;border:1px solid #cfdfd7;border-radius:8px;font:inherit}
+.claim-controls textarea{min-height:90px}.claim-controls textarea:focus-visible,.chat-compose input:focus-visible,.claim-callout textarea:focus-visible{outline:2px solid #087e6a;outline-offset:2px}
+.status-disputed{background:#fff2db;color:#825c13}.status-cancelled{background:#eef1f3;color:#56636d}

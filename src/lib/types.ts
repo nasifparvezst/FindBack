@@ -2,7 +2,7 @@ export const CATEGORIES = ["Phone", "Wallet", "ID Card", "Bag", "Keys", "Electro
 export type Category = (typeof CATEGORIES)[number];
 export type ReportType = "lost" | "found";
 export type ReportStatus = "open" | "returned";
-export type ClaimStatus = "pending" | "approved" | "rejected" | "completed";
+export type ClaimStatus = "pending" | "approved" | "rejected" | "completed" | "cancelled" | "disputed";
 export type Role = "student" | "admin";
 
 export type UserProfile = {
@@ -34,8 +34,13 @@ export type Report = {
 };
 
 export type ReportDraft = Pick<Report, "type" | "title" | "category" | "brand" | "color" | "location" | "occurredOn" | "description" | "contactPhone"> & { image?: string };
-export type Claim = { id: string; reportId: string; relatedReportId?: string; claimantId: string; message: string; status: ClaimStatus; createdAt: string; updatedAt: string };
+export type Claim = {
+  id: string; reportId: string; relatedReportId?: string; claimantId: string; message: string;
+  status: ClaimStatus; createdAt: string; updatedAt: string;
+  reviewedAt?: string; ownerConfirmedAt?: string; claimantConfirmedAt?: string; completedAt?: string;
+  cancelledAt?: string; disputedAt?: string; issueReason?: string; resolvedAt?: string; resolutionReason?: string;
+};
 export type Message = { id: string; claimId: string; senderId: string; body: string; createdAt: string };
 export type Notification = { id: string; userId: string; title: string; body: string; href: string; read: boolean; createdAt: string };
-export type Activity = { id: string; action: string; actorId: string; subject: string; createdAt: string };
+export type Activity = { id: string; action: string; actorId: string; subject: string; createdAt: string; reason?: string };
 export type DemoDB = { users: UserProfile[]; reports: Report[]; claims: Claim[]; messages: Message[]; notifications: Notification[]; activity: Activity[] };

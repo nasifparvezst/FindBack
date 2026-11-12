@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "tsc --target ES2020 --module commonjs --outDir .test-build src/lib/types.ts src/lib/matching.ts src/lib/validation.ts src/lib/statistics.ts src/lib/duplicates.ts && node --test tests/*.test.cjs"
+    "test": "tsc --target ES2020 --module commonjs --outDir .test-build src/lib/types.ts src/lib/matching.ts src/lib/validation.ts src/lib/statistics.ts src/lib/duplicates.ts src/lib/claim-workflow.ts && node --test tests/*.test.cjs",
+    "test:claims": "tsc --target ES2020 --module commonjs --outDir .test-build src/lib/types.ts src/lib/claim-workflow.ts && node --test tests/claims.test.cjs tests/claims-sql.test.cjs"
   },
   "dependencies": {
     "next": "^16.0.0",
@@ -22,6 +23,7 @@
     "@supabase/ssr": "^0.12.7"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
     "typescript": "^5.9.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",

@@ -3,45 +3,108 @@
 import { useState, type FormEvent } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, BadgeCheck, Check, MessageCircle, Send, ShieldCheck, X } from "lucide-react";
+import { ArrowLeft, Check, MessageCircle, Send, X } from "lucide-react";
 import { useApp } from "@/context/app-context";
 import { EmptyState, InfoNote, PageHeading, StatusTag } from "@/components/ui";
+import { canMessageClaim } from "@/lib/claim-workflow";
 import { formatDate, relativeDate } from "@/lib/format";
 
 export default function ClaimRoom() {
-  const { id }=useParams<{id:string}>();const {db,user,isAdmin,updateClaim,sendMessage,markReturned}=useApp();const [message,setMessage]=useState("");const [error,setError]=useState("");
-  const claim=db.claims.find((c)=>c.id===id);const report=db.reports.find((r)=>r.id===claim?.reportId);
-  const canView=!!claim&&!!report&&!!user&&(user.id===claim.claimantId||user.id===report.ownerId||isAdmin);
-  if(!canView||!claim||!report)return <div className="page-section container"><EmptyState title="Conversation not available" description="You may not have access to this claim, or it has been removed." actionHref="/my-reports"/></div>;
-  const owner=db.users.find((u)=>u.id===report.ownerId);const claimant=db.users.find((u)=>u.id===claim.claimantId);
-  const canReview=(user.id===report.ownerId||isAdmin)&&claim.status==="pending";
-  const canTalk=claim.status!=="rejected"&&claim.status!=="completed";
-  const thread=db.messages.filter((m)=>m.claimId===claim.id).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
-  const onSend=async (e:FormEvent)=>{
-    e.preventDefault();setError("");
-    try{await sendMessage(claim.id,message);setMessage("");}
-    catch(err){setError(err instanceof Error?err.message:"Failed to send message.");}
+  const { id } = useParams<{ id: string }>();
+  const { db, user, isAdmin, updateClaim, sendMessage, confirmHandover, manageClaim } = useApp();
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [issue, setIssue] = useState<"cancel" | "dispute" | null>(null);
+  const [reason, setReason] = useState("");
+  const [resolution, setResolution] = useState<"resume" | "resolve_cancel">("resume");
+  const claim = db.claims.find((entry) => entry.id === id);
+  const report = db.reports.find((entry) => entry.id === claim?.reportId);
+  if (!claim || !report || !user || !(user.id === claim.claimantId || user.id === report.ownerId || isAdmin)) {
+    return <section className="page-section container"><EmptyState title="Conversation not available" description="You may not have access to this claim, or it has been removed." actionHref="/my-reports" /></section>;
+  }
+  const owner = db.users.find((entry) => entry.id === report.ownerId);
+  const claimant = db.users.find((entry) => entry.id === claim.claimantId);
+  const isOwner = user.id === report.ownerId;
+  const participant = isOwner || user.id === claim.claimantId;
+  const confirmed = isOwner ? claim.ownerConfirmedAt : claim.claimantConfirmedAt;
+  // A Lost report owner receives the item; a Found report owner hands it over.
+  const ownerAction = report.type === "found" ? "I handed over the item" : "I received the item";
+  const claimantAction = report.type === "found" ? "I received the item" : "I handed over the item";
+  const ownAction = isOwner ? ownerAction : claimantAction;
+  const canReview = (isOwner || isAdmin) && claim.status === "pending";
+  const canCancel = participant && !claim.ownerConfirmedAt && !claim.claimantConfirmedAt &&
+    (claim.status === "approved" || (claim.status === "pending" && user.id === claim.claimantId));
+  const thread = db.messages.filter((entry) => entry.claimId === claim.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const run = async (operation: () => void | Promise<void>, feedback: string) => {
+    if (busy) return;
+    setBusy(true); setError(""); setSuccess("");
+    try { await operation(); setSuccess(feedback); }
+    catch (err) { setError(err instanceof Error ? err.message : "Could not update claim."); }
+    finally { setBusy(false); }
   };
-  const onReview=async (status:"approved"|"rejected")=>{
-    if(status==="rejected"&&!window.confirm("Reject this claim request?"))return;
-    setError("");try{await updateClaim(claim.id,status);}
-    catch(err){setError(err instanceof Error?err.message:"Could not update claim.");}
+  const onSend = (event: FormEvent) => {
+    event.preventDefault();
+    void run(async () => { await sendMessage(claim.id, message); setMessage(""); }, "Message sent.");
   };
-  const onReturn=async ()=>{
-    if(!window.confirm("Confirm the physical handover is complete?"))return;
-    setError("");try{await markReturned(report.id);}
-    catch(err){setError(err instanceof Error?err.message:"Failed to update return status.");}
+  const review = (decision: "approved" | "rejected") => {
+    if (decision === "rejected" && !window.confirm("Reject this claim request?")) return;
+    void run(() => updateClaim(claim.id, decision), `Claim ${decision}.`);
   };
-  return <section className="page-section container"><Link href="/my-reports" className="back-link"><ArrowLeft size={16}/> Back to claims</Link><PageHeading eyebrow="Ownership verification" title={`Claim: ${report.title}`} description={`Opened ${formatDate(claim.createdAt)}. Communicate privately and verify ownership before returning an item.`} aside={<StatusTag status={claim.status}/>}/>
-    <div className="chat-layout"><article className="panel chat-panel"><div style={{display:"flex",gap:10,alignItems:"center",borderBottom:"1px solid #e9f1ec",paddingBottom:17}}><span className="step-icon" style={{height:40,width:40}}><MessageCircle size={19}/></span><div><strong style={{fontSize:15}}>Private claim conversation</strong><div style={{fontSize:12,color:"#81988d"}}>{owner?.name} ↔ {claimant?.name}</div></div></div>
-      <div className="chat-scroll" aria-label="Conversation history"><div className="chat-message"><strong style={{fontSize:11,display:"block",marginBottom:5}}>Claim request · {claimant?.name}</strong>{claim.message}<small>{relativeDate(claim.createdAt)}</small></div>{thread.map((m)=><div key={m.id} className={`chat-message ${m.senderId===user.id?"mine":""}`}><strong style={{fontSize:11,display:"block",marginBottom:5}}>{db.users.find((u)=>u.id===m.senderId)?.name||"Campus user"}</strong>{m.body}<small>{relativeDate(m.createdAt)}</small></div>)}</div>
-      {error&&<div className="form-error" role="alert">{error}</div>}
-      {canTalk?<form className="chat-compose" onSubmit={onSend}><input required maxLength={2000} placeholder="Write a private message..." aria-label="Write a message" value={message} onChange={(e)=>setMessage(e.target.value)}/><button className="btn btn-primary" type="submit"><Send size={16}/> Send</button></form>:<InfoNote>This claim is closed, so further messages are disabled.</InfoNote>}
-    </article>
-    <aside><div className="panel claim-summary"><div className="claim-status-row"><h3 style={{margin:0}}>Claim details</h3><StatusTag status={claim.status}/></div><div className="info-row"><span className="key">Reported item</span><Link href={`/item/${report.id}`} className="text-link">{report.title}</Link></div><div className="info-row"><span className="key">Report owner</span><span className="value">{owner?.name}</span></div><div className="info-row"><span className="key">Claimant</span><span className="value">{claimant?.name}</span></div><div className="info-row"><span className="key">Submitted</span><span className="value">{formatDate(claim.createdAt)}</span></div>
-      {canReview&&<div style={{marginTop:25}}><strong style={{fontSize:13}}>Review request</strong><p style={{color:"#82978e",fontSize:12,margin:"5px 0 10px"}}>Only approve after checking the claimant&apos;s private identifying details.</p><button className="btn btn-primary btn-wide" onClick={()=>onReview("approved")}><Check size={16}/> Approve claim</button><button className="btn btn-danger btn-wide" onClick={()=>onReview("rejected")}><X size={16}/> Reject claim</button></div>}
-      {(user.id===report.ownerId||isAdmin)&&claim.status==="approved"&&report.status==="open"&&<div style={{marginTop:20}}><InfoNote><BadgeCheck size={15}/>Only confirm once the item has actually changed hands.</InfoNote><button className="btn btn-primary btn-wide" onClick={onReturn}><Check size={16}/> Confirm item returned</button></div>}
-      <div style={{marginTop:22}}><InfoNote><ShieldCheck size={17}/> Meet in a safe public campus area. Never reveal passwords, PINs or complete ID numbers.</InfoNote></div></div></aside>
-    </div>
-  </section>;
+  const onIssue = (event: FormEvent) => {
+    event.preventDefault();
+    if (!issue) return;
+    void run(async () => { await manageClaim(claim.id, issue, reason); setIssue(null); setReason(""); }, "Claim updated; both parties have been notified.");
+  };
+  const onResolve = (event: FormEvent) => {
+    event.preventDefault();
+    if (!window.confirm(resolution === "resume" ? "Resume and require fresh confirmations from both parties?" : "Cancel this disputed claim? The reports will remain open.")) return;
+    void run(async () => { await manageClaim(claim.id, resolution, reason); setReason(""); }, "Dispute resolution recorded in the Admin audit log.");
+  };
+  const step = (label: string, timestamp?: string, recorded = false) => <li className={timestamp || recorded ? "done" : ""}><strong>{label}</strong><small>{timestamp ? new Date(timestamp).toLocaleString() : recorded ? "Previously recorded" : "Waiting"}</small></li>;
+  return (
+    <section className="page-section container">
+      <Link href="/my-reports" className="back-link"><ArrowLeft size={16} /> Back to claims</Link>
+      <PageHeading eyebrow="Ownership verification" title={`Claim: ${report.title}`} description={`Opened ${formatDate(claim.createdAt)}. Verify ownership privately, then both parties confirm the physical handover.`} aside={<StatusTag status={claim.status} />} />
+      {error && <div className="form-error" role="alert">{error}</div>}
+      {success && <div className="info-note" role="status">{success}</div>}
+      <div className="chat-layout">
+        <article className="panel chat-panel">
+          <h2 className="claim-chat-heading"><MessageCircle size={19} /> Private claim conversation</h2>
+          <p>{owner?.name} ↔ {claimant?.name}</p>
+          <div className="chat-scroll" role="log" aria-label="Conversation history" aria-live="polite" aria-relevant="additions">
+            <div className="chat-message"><strong>Claim request · {claimant?.name}</strong><p>{claim.message}</p><small>{relativeDate(claim.createdAt)}</small></div>
+            {thread.map((entry) => <div key={entry.id} className={`chat-message ${entry.senderId === user.id ? "mine" : ""}`}><strong>{db.users.find((person) => person.id === entry.senderId)?.name || "Campus user"}</strong><p>{entry.body}</p><small>{relativeDate(entry.createdAt)}</small></div>)}
+          </div>
+          {canMessageClaim(claim) ? <form className="chat-compose" onSubmit={onSend}><input required maxLength={2000} placeholder="Write a private message..." aria-label="Write a message" value={message} onChange={(event) => setMessage(event.target.value)} /><button disabled={busy || !message.trim()} className="btn btn-primary" type="submit"><Send size={16} /> Send</button></form> : <InfoNote>This claim is closed, so further messages are disabled.</InfoNote>}
+        </article>
+        <aside className="panel claim-summary">
+          <h2>Claim details</h2>
+          <div className="info-row"><span className="key">Reported item</span><Link href={`/item/${report.id}`} className="text-link">{report.title}</Link></div>
+          <div className="info-row"><span className="key">Report owner</span><span>{owner?.name}</span></div>
+          <div className="info-row"><span className="key">Claimant</span><span>{claimant?.name}</span></div>
+          <h3>Claim progress</h3>
+          <ol className="claim-timeline">
+            {step("Submitted", claim.createdAt)}
+            {step(claim.status === "rejected" ? "Rejected" : "Approved", claim.reviewedAt, ["approved", "disputed", "completed", "rejected"].includes(claim.status))}
+            {step(`Owner: ${ownerAction}`, claim.ownerConfirmedAt)}
+            {step(`Claimant: ${claimantAction}`, claim.claimantConfirmedAt)}
+            {step("Completed", claim.completedAt, claim.status === "completed")}
+          </ol>
+          {claim.disputedAt && <p><strong>Dispute raised:</strong> {new Date(claim.disputedAt).toLocaleString()}</p>}
+          {claim.issueReason && <p><strong>Issue:</strong> {claim.issueReason}</p>}
+          {claim.cancelledAt && <p><strong>Cancelled:</strong> {new Date(claim.cancelledAt).toLocaleString()}</p>}
+          {claim.resolutionReason && <p><strong>Admin resolution:</strong> {claim.resolutionReason}</p>}
+          {canReview && <div className="claim-controls"><InfoNote>Only approve after checking non-sensitive identifying details.</InfoNote><button disabled={busy} className="btn btn-primary btn-wide" onClick={() => review("approved")}><Check size={16} /> Approve claim</button><button disabled={busy} className="btn btn-danger btn-wide" onClick={() => review("rejected")}><X size={16} /> Reject claim</button></div>}
+          {claim.status === "approved" && <div className="claim-controls"><InfoNote>Both parties must confirm. One confirmation alone keeps the item Open.</InfoNote>{participant ? confirmed ? <p role="status">Your confirmation is recorded. Waiting for the other person.</p> : <button disabled={busy} className="btn btn-primary btn-wide" onClick={() => { if (window.confirm(`${ownAction}. Confirm only after the physical handover?`)) void run(() => confirmHandover(claim.id), "Your confirmation was saved. Both confirmations are required for completion."); }}>{ownAction}</button> : <p>Only the owner and claimant can confirm; Admin cannot confirm on their behalf.</p>}</div>}
+          {claim.status === "disputed" && <InfoNote>Handover is paused while an Admin reviews the dispute. You can continue the private conversation.</InfoNote>}
+          {(canCancel || (participant && claim.status === "approved")) && <div className="claim-controls">{canCancel && <button disabled={busy} className="btn btn-outline btn-sm" onClick={() => { setIssue("cancel"); setReason(""); }}>Cancel claim</button>}{participant && claim.status === "approved" && <button disabled={busy} className="btn btn-outline btn-sm" onClick={() => { setIssue("dispute"); setReason(""); }}>Raise a dispute</button>}</div>}
+          {issue && <form className="claim-controls" onSubmit={onIssue}><label htmlFor="claim-reason">Reason to {issue} (10–1000 characters)</label><textarea id="claim-reason" required minLength={10} maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} /><button disabled={busy} className="btn btn-danger btn-sm" type="submit">Submit {issue}</button><button className="btn btn-light btn-sm" type="button" onClick={() => setIssue(null)}>Back</button></form>}
+          {isAdmin && claim.status === "disputed" && <form className="claim-controls" onSubmit={onResolve}><h3>Resolve dispute</h3><label htmlFor="resolution">Resolution</label><select id="resolution" value={resolution} onChange={(event) => setResolution(event.target.value as typeof resolution)}><option value="resume">Resume with fresh confirmations</option><option value="resolve_cancel">Cancel disputed claim</option></select><label htmlFor="resolution-reason">Required reason (10–1000 characters)</label><textarea id="resolution-reason" required minLength={10} maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} /><small>This action notifies both parties and records an Admin audit entry.</small><button disabled={busy} className="btn btn-primary btn-wide" type="submit">Record resolution</button></form>}
+          <div className="claim-controls"><InfoNote>Meet in a safe campus area. Never send passwords, PINs, full ID numbers or sensitive documents.</InfoNote></div>
+        </aside>
+      </div>
+    </section>
+  );
 }

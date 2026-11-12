@@ -23,8 +23,9 @@ Open **SQL Editor > New query**. Open each SQL file from the project and run its
 
 1. `supabase/migrations/202611050001_initial.sql`
 2. `supabase/migrations/202611060001_report_management_privacy.sql`
+3. `supabase/migrations/202611120001_two_party_handover.sql`
 
-If the first migration was already run for this project, do not run it again; run only the second migration. The first migration creates the database tables, RLS policies, RPC functions and `report-images` bucket. The second migration removes any public ID-card photos, blocks future ID-card photos and adds a browse index.
+Run only migrations not yet applied. The first creates the schema/security and Storage bucket; the second blocks public ID-card photos. The third adds two-party handover, cancel/dispute states and audited Admin resolution, preserves existing data and disables the legacy completion endpoint. Review the third migration before running it: pre-existing overlapping approved claims must be resolved first; existing approved claims will need both parties' new confirmations. No live migration has been applied by this development task.
 
 In **Database > Tables**, confirm these tables exist: `profiles`, `profile_emails`, `admin_members`, `reports`, `report_contacts`, `claims`, `messages`, `notifications`, and `moderation_actions`.
 
@@ -95,7 +96,7 @@ Sign out and back in. Do not put this query or a service-role key in browser cod
 3. User B creates a Found report; User A checks Smart Matches.
 4. User A submits a claim; User B reviews it from My Reports.
 5. Approve the claim, exchange private messages, and verify an unrelated account cannot read them.
-6. Confirm handover only after the item is physically returned.
+6. Confirm handover separately as User A and User B after the physical exchange. Verify that one confirmation leaves reports Open and that two complete the linked reports. Verify an unrelated user or Admin cannot confirm on behalf of a participant. Test cancel before confirmation, dispute after one confirmation, and Admin resume/cancel with a required audit reason.
 7. Test admin access, suspended users, email confirmation and password recovery.
 
 ## Notes

@@ -69,7 +69,7 @@ export default function MyReports() {
       </div>
       <div className="my-report-filters panel">
         <div className="field"><label htmlFor="my-search">Search {tab === "reports" ? "reports" : "claims"}</label><div className="search-with-icon"><Search size={16} /><input id="my-search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder={tab === "reports" ? "Item name, category or location" : "Item, person or claim status"} /></div></div>
-        <div className="field"><label htmlFor="my-status">Status</label><select id="my-status" value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="all">All statuses</option>{(tab === "reports" ? ["open", "returned"] : ["pending", "approved", "rejected", "completed"]).map((value) => <option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</option>)}</select></div>
+        <div className="field"><label htmlFor="my-status">Status</label><select id="my-status" value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="all">All statuses</option>{(tab === "reports" ? ["open", "returned"] : ["pending", "approved", "disputed", "rejected", "cancelled", "completed"]).map((value) => <option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</option>)}</select></div>
       </div>
       <div className="result-summary">{currentCount} {tab === "reports" ? "reports" : "claims"} found</div>
       {tab === "reports" ? (

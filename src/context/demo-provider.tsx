@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createDemoDB, demoUsers } from "@/lib/demo";
 import { calculateMatchScore } from "@/lib/matching";
+import { activeClaim, applyClaimAction, canMessageClaim, reservedClaim } from "@/lib/claim-workflow";
 import type { Activity, Claim, ClaimStatus, DemoDB, Message, Notification, Report, ReportDraft, UserProfile } from "@/lib/types";
 import { validEmail, validateReport } from "@/lib/validation";
 import { Context, DEMO_MODE } from "@/context/app-store";
@@ -73,6 +74,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     if (!existing) throw new Error("Report not found.");
     const current = isOwnerOrAdmin(existing.ownerId);
     if (existing.status !== "open") throw new Error("Returned reports cannot be edited.");
+    if ((draft.type !== existing.type || draft.category !== existing.category) && db.claims.some((claim) => activeClaim(claim) && [claim.reportId, claim.relatedReportId].includes(id))) throw new Error("Resolve active claims before changing report type or category.");
     const errors = validateReport(draft);
     if (errors.length) throw new Error(errors[0]);
     setDB((d) => ({ ...d, reports: d.reports.map((r) => r.id === id ? { ...r, ...draft, updatedAt: now() } : r), activity: [action(current.id, "Report updated", existing.title), ...d.activity] }));
@@ -82,6 +84,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     const report = db.reports.find((r) => r.id === id);
     if (!report) throw new Error("Report not found.");
     const current = isOwnerOrAdmin(report.ownerId);
+    if (db.claims.some((claim) => reservedClaim(claim) && [claim.reportId, claim.relatedReportId].includes(id))) throw new Error("Resolve the approved or disputed claim before deleting this report.");
     const claimIds = new Set(db.claims.filter((c) => c.reportId === id).map((c) => c.id));
     setDB((d) => ({ ...d, reports: d.reports.filter((r) => r.id !== id).map((r) => r.linkedReportId === id ? { ...r, linkedReportId: undefined } : r), claims: d.claims.filter((c) => c.reportId !== id).map((c) => c.relatedReportId === id ? { ...c, relatedReportId: undefined } : c), messages: d.messages.filter((m) => !claimIds.has(m.claimId)), activity: [action(current.id, "Report deleted", report.title), ...d.activity] }));
   };
@@ -90,55 +93,37 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     const current = mustLogin(); const report = db.reports.find((r) => r.id === reportId);
     if (!report || report.status !== "open") throw new Error("This report is no longer available for claims.");
     if (report.ownerId === current.id) throw new Error("You cannot claim your own report.");
-    if (message.trim().length < 12) throw new Error("Please provide at least 12 characters to explain your claim.");
+    if (message.trim().length < 12 || message.trim().length > 2000) throw new Error("Provide 12 to 2000 characters of non-sensitive identifying details.");
     if (relatedReportId) {
       const related = db.reports.find((r) => r.id === relatedReportId);
-      if (!related || related.ownerId !== current.id || related.type === report.type || related.status !== "open") throw new Error("Selected related report must be your own open report of the opposite type.");
+      if (!related || related.ownerId !== current.id || related.type === report.type || related.category !== report.category || related.status !== "open") throw new Error("Select your own open, opposite-type report in the same category.");
     }
-    if (db.claims.some((c) => c.reportId === reportId && c.claimantId === current.id && ["pending", "approved"].includes(c.status))) throw new Error("You already have an active claim for this report.");
+    if (db.claims.some((c) => c.reportId === reportId && c.claimantId === current.id && activeClaim(c))) throw new Error("You already have an active claim for this report.");
+    if (db.claims.some((c) => reservedClaim(c) && [c.reportId, c.relatedReportId].some((id) => id === reportId || Boolean(relatedReportId && id === relatedReportId)))) throw new Error("A selected report is reserved by another claim.");
     const id = newId(); const claim: Claim = { id, reportId, relatedReportId: relatedReportId || undefined, claimantId: current.id, message: message.trim(), status: "pending", createdAt: now(), updatedAt: now() };
-    setDB((d) => ({ ...d, claims: [claim, ...d.claims], notifications: [...d.notifications, notice(report.ownerId, "New claim request", `${current.name} has requested to claim ${report.title}.`, `/claims/${id}`)], activity: [action(current.id, "Claim submitted", report.title), ...d.activity] }));
+    setDB((d) => ({ ...d, claims: [claim, ...d.claims], notifications: [...d.notifications, ...[report.ownerId, current.id].map((userId) => notice(userId, "New claim request", `A claim for ${report.title} was submitted.`, `/claims/${id}`))], activity: [action(current.id, "Claim submitted", report.title), ...d.activity] }));
     return id;
   };
 
   const updateClaim = (claimId: string, status: ClaimStatus) => {
-    const current = mustLogin(); const claim = db.claims.find((c) => c.id === claimId); const report = db.reports.find((r) => r.id === claim?.reportId);
-    if (!claim || !report) throw new Error("Claim not found.");
-    if (report.ownerId !== current.id && current.role !== "admin") throw new Error("Only the report owner or an admin can review this claim.");
-    if (claim.status !== "pending" || !["approved", "rejected"].includes(status)) throw new Error("Only pending claims can be approved or rejected.");
-    if (status === "approved" && report.status !== "open") throw new Error("Cannot approve a claim for a returned item.");
-    if (status === "approved" && claim.relatedReportId && !db.reports.some((r) => r.id === claim.relatedReportId && r.status === "open" && r.ownerId === claim.claimantId)) throw new Error("The linked report is no longer available.");
-    if (status === "approved" && db.claims.some((c) => c.reportId === claim.reportId && c.id !== claimId && c.status === "approved")) throw new Error("Another claim for this item is already approved.");
-    setDB((d) => ({ ...d, claims: d.claims.map((c) => c.id === claimId ? { ...c, status, updatedAt: now() } : c), notifications: [...d.notifications, notice(claim.claimantId, `Claim ${status}`, `Your claim for ${report.title} was ${status}.`, `/claims/${claimId}`)], activity: [action(current.id, `Claim ${status}`, report.title), ...d.activity] }));
+    const current = mustLogin();
+    if (status !== "approved" && status !== "rejected") throw new Error("Invalid claim review decision.");
+    setDB(applyClaimAction(db, current.id, claimId, { type: status }, now()));
   };
 
   const sendMessage = (claimId: string, body: string) => {
     const current = mustLogin(); const claim = db.claims.find((c) => c.id === claimId); const report = db.reports.find((r) => r.id === claim?.reportId);
     if (!claim || !report) throw new Error("Conversation not found.");
     if (![claim.claimantId, report.ownerId].includes(current.id) && current.role !== "admin") throw new Error("You are not part of this conversation.");
-    if (claim.status === "rejected" || claim.status === "completed") throw new Error("This conversation is closed.");
+    if (!canMessageClaim(claim)) throw new Error("This conversation is closed.");
     if (!body.trim() || body.trim().length > 2000) throw new Error("Message must contain 1 to 2000 characters.");
     const otherId = current.id === report.ownerId ? claim.claimantId : report.ownerId;
     const message: Message = { id: newId(), claimId, senderId: current.id, body: body.trim(), createdAt: now() };
     setDB((d) => ({ ...d, messages: [...d.messages, message], notifications: [...d.notifications, notice(otherId, "New message", `${current.name} sent you a message about ${report.title}.`, `/claims/${claimId}`)] }));
   };
 
-  const markReturned = (reportId: string) => {
-    const report = db.reports.find((r) => r.id === reportId);
-    if (!report) throw new Error("Report not found.");
-    const current = isOwnerOrAdmin(report.ownerId);
-    if (report.status === "returned") throw new Error("This report is already returned.");
-    const approved = db.claims.find((c) => c.reportId === reportId && c.status === "approved");
-    const related = approved?.relatedReportId ? db.reports.find((r) => r.id === approved.relatedReportId && r.status === "open") : undefined;
-    const touched = new Set([reportId, ...(related ? [related.id] : [])]);
-    setDB((d) => ({
-      ...d,
-      reports: d.reports.map((r) => touched.has(r.id) ? { ...r, status: "returned" as const, linkedReportId: related ? (r.id === reportId ? related.id : reportId) : r.linkedReportId, updatedAt: now() } : r),
-      claims: d.claims.map((c) => c.reportId === reportId && c.status === "approved" ? { ...c, status: "completed", updatedAt: now() } : c),
-      notifications: [...d.notifications, ...(approved ? [notice(approved.claimantId, "Item returned", `${report.title} has been marked returned.`, `/claims/${approved.id}`)] : [])],
-      activity: [action(current.id, "Report returned", report.title), ...d.activity],
-    }));
-  };
+  const confirmHandover = (claimId: string) => { const current = mustLogin(); setDB(applyClaimAction(db, current.id, claimId, { type: "confirm" }, now())); };
+  const manageClaim = (claimId: string, type: "cancel" | "dispute" | "resume" | "resolve_cancel", reason: string) => { const current = mustLogin(); setDB(applyClaimAction(db, current.id, claimId, { type, reason }, now())); };
 
   const markNotificationRead = (id: string) => { const current = mustLogin(); setDB((d) => ({ ...d, notifications: d.notifications.map((n) => n.id === id && n.userId === current.id ? { ...n, read: true } : n) })); };
   const markAllRead = () => { const current = mustLogin(); setDB((d) => ({ ...d, notifications: d.notifications.map((n) => n.userId === current.id ? { ...n, read: true } : n) })); };
@@ -151,6 +136,6 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   };
 
   const resetDemo = () => { setDB(createDemoDB()); setUserId(demoUsers[0].id); };
-  return <Context.Provider value={{ ready, db, user, isAdmin, switchUser, registerDemo, addReport, editReport, removeReport, requestClaim, updateClaim, sendMessage, markReturned, markNotificationRead, markAllRead, suspendUser, resetDemo }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ ready, db, user, isAdmin, switchUser, registerDemo, addReport, editReport, removeReport, requestClaim, updateClaim, sendMessage, confirmHandover, manageClaim, markNotificationRead, markAllRead, suspendUser, resetDemo }}>{children}</Context.Provider>;
 }
 
