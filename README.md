@@ -2,7 +2,7 @@
 
 A Next.js 16 + React 19 + TypeScript campus lost-and-found application. Step 3 improves report creation and editing, duplicate warnings, browsing, My Reports management, image privacy and storage cleanup.
 
-> **Release status:** The Step 3 baseline includes Phase 1 Smart Matching and Phase 2 two-party handover. Phase 2 passed 24 targeted Demo/SQL tests, TypeScript checking, changed-file lint and browser workflow checks. Earlier baseline production-build results are in `docs/BASELINE_AUDIT.md`; a new full build/suite is deferred to the final audit. Live Supabase, email and real concurrent multi-user testing remain required before deployment.
+> **Release status:** The Step 3 baseline includes Phase 1 Smart Matching, Phase 2 two-party handover and Phase 3 private realtime chat/notifications. Phase 3 passed 15 targeted logic/SQL tests and Demo browser checks; live Supabase Realtime, email and concurrent multi-device testing remain required before deployment. A full build/suite is deferred to the requested final audit.
 
 ## Requirements
 
@@ -36,6 +36,7 @@ Read `docs/STEP2_SETUP.md`. In summary:
    - `supabase/migrations/202611050001_initial.sql`
    - `supabase/migrations/202611060001_report_management_privacy.sql`
    - `supabase/migrations/202611120001_two_party_handover.sql`
+   - `supabase/migrations/202611130001_private_chat_realtime.sql`
 3. Configure the email confirmation and password recovery templates/redirect URLs.
 4. Copy the Supabase Project URL and publishable key into `.env.local`.
 5. Set `NEXT_PUBLIC_DEMO_MODE=false` and restart the dev server.
@@ -74,10 +75,11 @@ npm run typecheck
 npm run lint
 npm test
 npm run test:claims
+npm run test:chat
 npm run build
 ```
 
-`npm test` runs the matching, validation, statistics and duplicate-warning unit tests. A passing unit test suite does not replace live Supabase RLS, Auth, Storage or browser end-to-end testing.
+`npm test` runs the existing logic and disposable database tests, including claims and chat. Passing local tests do not replace live Supabase RLS, Auth, Storage or browser end-to-end testing.
 
 `npm run typecheck` generates Next.js route types before checking TypeScript, so it also works before the first dev server or production build. Lint excludes generated `.test-build` output and supports the Node test runner's CommonJS test files.
 
@@ -88,6 +90,14 @@ npm run build
 The claim page records owner and claimant confirmations separately; both are required before completing the claim and returning its linked reports. A Lost report owner confirms receiving; a Found report owner confirms handing over. Admins cannot confirm for another party. Cancel is available before either confirmation; afterward, participants can raise a dispute. Admin dispute resolution requires a reason and audit entry, and resuming clears prior confirmations so both parties must confirm again. Closed claims cannot send messages.
 
 Cloud mode requires the third migration above. It preserves existing reports/claims/messages, adds confirmation/review/dispute timestamps and statuses, protects reserved reports, and disables the legacy one-party completion RPC. Previously completed claims remain historical records; existing approved claims require fresh confirmations. The migration stops without changing data if it finds overlapping approved reservations. Apply it once after review; rolling back later requires reconciling new claim states rather than rerunning old migrations.
+
+## Phase 3 private chat and notifications
+
+Cloud mode subscribes to authorized claim changes, the signed-in recipient's notifications, and messages for the open conversation. Subscriptions are removed on account/conversation changes and unmount. Events trigger authorized database reads; periodic refresh, returning to the tab and reconnect reconcile missed updates. Chat history loads the latest 50 messages, with cursor-based older pages and multi-page reconnect catch-up. Message retries reuse a delivery UUID to prevent duplicate messages and alerts.
+
+The header and claim list show unread counts. Opening a visible conversation at its newest messages reads message alerts through the displayed cursor; claim-status alerts and later arrivals remain unread. Admin messages notify both participants. Notification lists show 20 entries at a time from the existing latest-500 snapshot; unread totals include all records. Scaling the remaining report/claim/notification snapshots is a later phase.
+
+Apply the fourth migration after the earlier three before enabling Cloud mode. It adds message-linked alerts and RPCs and includes `messages`, `claims` and `notifications` in the Supabase Realtime publication without weakening RLS. `npm run test:chat` runs the targeted chat logic and PostgreSQL tests; mock subscriptions verify reconnect/cleanup behavior, while local PostgreSQL verifies pagination, read cursors, idempotency and access control. Actual Supabase WebSocket delivery still requires a configured project and two devices. See `docs/STEP2_SETUP.md`.
 
 ## Scope decisions
 

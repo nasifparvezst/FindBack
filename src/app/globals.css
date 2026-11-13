@@ -40,3 +40,10 @@
 .claim-controls label,.claim-controls small{width:100%;font-size:12px}.claim-controls textarea,.claim-controls select{width:100%;padding:10px;border:1px solid #cfdfd7;border-radius:8px;font:inherit}
 .claim-controls textarea{min-height:90px}.claim-controls textarea:focus-visible,.chat-compose input:focus-visible,.claim-callout textarea:focus-visible{outline:2px solid #087e6a;outline-offset:2px}
 .status-disputed{background:#fff2db;color:#825c13}.status-cancelled{background:#eef1f3;color:#56636d}
+
+/* Realtime private conversations and unread indicators. */
+.unread-count{position:absolute;top:-5px;right:-7px;min-width:19px;padding:2px 4px;border-radius:12px;background:#087e6a;color:white;font-size:10px;font-weight:800;text-align:center;border:2px solid white}
+.claim-unread{padding:3px 6px;border-radius:8px;background:#e5f5ed;color:#08705d;font-size:10px;white-space:nowrap}
+.chat-connection{display:block;margin:8px 0 12px;color:#55736b;font-size:11px}
+.chat-scroll{overflow-anchor:none}.chat-message p{overflow-wrap:anywhere;white-space:pre-wrap}
+.chat-compose input{min-width:0}.chat-panel .form-error button{margin-left:10px}

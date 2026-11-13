@@ -41,6 +41,6 @@ export type Claim = {
   cancelledAt?: string; disputedAt?: string; issueReason?: string; resolvedAt?: string; resolutionReason?: string;
 };
 export type Message = { id: string; claimId: string; senderId: string; body: string; createdAt: string };
-export type Notification = { id: string; userId: string; title: string; body: string; href: string; read: boolean; createdAt: string };
+export type Notification = { id: string; userId: string; title: string; body: string; href: string; read: boolean; createdAt: string; messageId?: string };
 export type Activity = { id: string; action: string; actorId: string; subject: string; createdAt: string; reason?: string };
 export type DemoDB = { users: UserProfile[]; reports: Report[]; claims: Claim[]; messages: Message[]; notifications: Notification[]; activity: Activity[] };

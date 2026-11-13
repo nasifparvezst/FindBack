@@ -15,9 +15,9 @@ const links = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const path = usePathname();
-  const { ready, user, db, isAdmin, syncError } = useApp();
+  const { ready, user, db, isAdmin, syncError, unreadNotifications } = useApp();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const unread = db.notifications.filter((n) => n.userId === user?.id && !n.read).length;
+  const unread = unreadNotifications ?? db.notifications.filter((n) => n.userId === user?.id && !n.read).length;
   if (!ready) return <div className="startup"><div className="startup-mark">↩</div><p>Preparing FindBack...</p></div>;
 
   return <div className="site-root">
@@ -33,7 +33,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {isAdmin && <Link href="/admin" className={`nav-item ${path === "/admin" ? "active" : ""}`}>Admin</Link>}
         </nav>
         <div className="header-actions">
-          <Link href="/notifications" className="icon-action notification-action" aria-label={`Notifications (${unread} unread)`}><Bell size={20}/>{unread > 0 && <span className="unread-dot"/>}</Link>
+          <Link href="/notifications" className="icon-action notification-action" aria-label={`Notifications (${unread} unread)`}><Bell size={20}/>{unread > 0 && <span className="unread-count" aria-hidden="true">{unread > 99 ? "99+" : unread}</span>}</Link>
           {user ? <Link className="avatar-button" href={DEMO_MODE ? "/login" : "/account"} title={DEMO_MODE ? "Switch demo account" : "My account"}><span>{user.name.split(" ").map((x)=>x[0]).slice(0,2).join("")}</span><span className="avatar-name">{user.name.split(" ")[0]}</span></Link> : <Link href="/login" className="top-login"><LogIn size={17}/> Sign in</Link>}
           <Link href="/report/lost" className="btn btn-primary header-report"><Plus size={17}/> Post an Item</Link>
           <button className="icon-action mobile-toggle" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Toggle navigation">{mobileOpen ? <X size={23}/> : <Menu size={23}/>}</button>

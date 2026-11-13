@@ -3,16 +3,15 @@
 import { useState, type FormEvent } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Check, MessageCircle, Send, X } from "lucide-react";
+import { ArrowLeft, Check, X } from "lucide-react";
 import { useApp } from "@/context/app-context";
 import { EmptyState, InfoNote, PageHeading, StatusTag } from "@/components/ui";
-import { canMessageClaim } from "@/lib/claim-workflow";
-import { formatDate, relativeDate } from "@/lib/format";
+import { ClaimChat } from "@/components/claim-chat";
+import { formatDate } from "@/lib/format";
 
 export default function ClaimRoom() {
   const { id } = useParams<{ id: string }>();
-  const { db, user, isAdmin, updateClaim, sendMessage, confirmHandover, manageClaim } = useApp();
-  const [message, setMessage] = useState("");
+  const { db, user, isAdmin, updateClaim, confirmHandover, manageClaim } = useApp();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
@@ -36,17 +35,12 @@ export default function ClaimRoom() {
   const canReview = (isOwner || isAdmin) && claim.status === "pending";
   const canCancel = participant && !claim.ownerConfirmedAt && !claim.claimantConfirmedAt &&
     (claim.status === "approved" || (claim.status === "pending" && user.id === claim.claimantId));
-  const thread = db.messages.filter((entry) => entry.claimId === claim.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const run = async (operation: () => void | Promise<void>, feedback: string) => {
     if (busy) return;
     setBusy(true); setError(""); setSuccess("");
     try { await operation(); setSuccess(feedback); }
     catch (err) { setError(err instanceof Error ? err.message : "Could not update claim."); }
     finally { setBusy(false); }
-  };
-  const onSend = (event: FormEvent) => {
-    event.preventDefault();
-    void run(async () => { await sendMessage(claim.id, message); setMessage(""); }, "Message sent.");
   };
   const review = (decision: "approved" | "rejected") => {
     if (decision === "rejected" && !window.confirm("Reject this claim request?")) return;
@@ -70,15 +64,7 @@ export default function ClaimRoom() {
       {error && <div className="form-error" role="alert">{error}</div>}
       {success && <div className="info-note" role="status">{success}</div>}
       <div className="chat-layout">
-        <article className="panel chat-panel">
-          <h2 className="claim-chat-heading"><MessageCircle size={19} /> Private claim conversation</h2>
-          <p>{owner?.name} ↔ {claimant?.name}</p>
-          <div className="chat-scroll" role="log" aria-label="Conversation history" aria-live="polite" aria-relevant="additions">
-            <div className="chat-message"><strong>Claim request · {claimant?.name}</strong><p>{claim.message}</p><small>{relativeDate(claim.createdAt)}</small></div>
-            {thread.map((entry) => <div key={entry.id} className={`chat-message ${entry.senderId === user.id ? "mine" : ""}`}><strong>{db.users.find((person) => person.id === entry.senderId)?.name || "Campus user"}</strong><p>{entry.body}</p><small>{relativeDate(entry.createdAt)}</small></div>)}
-          </div>
-          {canMessageClaim(claim) ? <form className="chat-compose" onSubmit={onSend}><input required maxLength={2000} placeholder="Write a private message..." aria-label="Write a message" value={message} onChange={(event) => setMessage(event.target.value)} /><button disabled={busy || !message.trim()} className="btn btn-primary" type="submit"><Send size={16} /> Send</button></form> : <InfoNote>This claim is closed, so further messages are disabled.</InfoNote>}
-        </article>
+        <ClaimChat claim={claim} userId={user.id} />
         <aside className="panel claim-summary">
           <h2>Claim details</h2>
           <div className="info-row"><span className="key">Reported item</span><Link href={`/item/${report.id}`} className="text-link">{report.title}</Link></div>

@@ -43,6 +43,7 @@ Run in filename order in the same Supabase project:
 1. `202611050001_initial.sql` -- tables, indexes, RLS, RPC functions, triggers and Storage bucket.
 2. `202611060001_report_management_privacy.sql` -- ID-card photo privacy constraint and browse index.
 3. `202611120001_two_party_handover.sql` -- two-party handover, cancel/dispute workflow, reservation guards and Admin resolution audit.
+4. `202611130001_private_chat_realtime.sql` -- message cursor indexes, message-linked notifications, authorized chat history/send/read RPCs, exact unread totals and Realtime publication.
 
 Do not rerun the initial migration on a populated project. Apply later migrations once, after reviewing their effects.
 
@@ -58,4 +59,8 @@ Next.js App Router
       -> Storage: report-images
 ```
 
-Cloud data refreshes after successful actions, on tab focus and on a 30-second polling interval. Supabase Realtime subscriptions and server-side pagination are not implemented yet. The current cloud refresh is capped at 500 rows per table; pagination and query-time filters are future scale work.
+Cloud data refreshes after actions, tab focus, reconnect and a 30-second fallback interval. Realtime subscriptions invalidate authorized claim/notification reads, with claim-scoped message subscriptions only while the conversation is open. No DELETE subscriptions are used. Channels and queued callbacks are cleaned up on account/conversation changes and unmount.
+
+Chat history is read separately through `get_claim_messages`, a SECURITY INVOKER RPC under existing participant/Admin RLS, using `(created_at,id)` cursors and a 51st lookahead row for 50-message pages. Reconnect catch-up reads forward until no page remains. `send_claim_message` preserves the same delivery UUID on retries. `notifications.message_id` is nullable for compatibility with old notices. `mark_claim_messages_read` only marks the caller's message alerts through an authorized displayed message cursor, and `get_notification_summary` counts only RLS-visible notifications.
+
+The remaining report/claim/notification snapshots are capped at 500 rows; broader query filtering/pagination remains future scale work. Unread counts are aggregated across all notifications, independently of the snapshot cap. No live Realtime delivery or concurrent-connection test has been performed locally.

@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Context, type AppStore } from "@/context/app-store";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { validateReport } from "@/lib/validation";
-import type { Activity, Category, Claim, ClaimStatus, DemoDB, Message, Notification, Report, ReportDraft, ReportStatus, ReportType, UserProfile } from "@/lib/types";
+import { createRefreshQueue, type MessageCursor } from "@/lib/chat";
+import { watchPrivateUpdates } from "@/lib/realtime";
+import type { Activity, Category, Claim, ClaimStatus, DemoDB, Notification, Report, ReportDraft, ReportStatus, ReportType, UserProfile } from "@/lib/types";
 
 type ProfileRow = { id: string; display_name: string; created_at: string; suspended_at: string | null };
 type EmailRow = { user_id: string; email: string };
@@ -18,8 +20,7 @@ type ReportRow = {
 type ContactRow = { report_id: string; phone: string };
 type ClaimRow = { id: string; report_id: string; related_report_id: string | null; claimant_id: string; message: string; status: string; created_at: string; updated_at: string;
   reviewed_at?: string; owner_confirmed_at?: string; claimant_confirmed_at?: string; completed_at?: string; cancelled_at?: string; disputed_at?: string; issue_reason?: string; resolved_at?: string; resolution_reason?: string };
-type MessageRow = { id: string; claim_id: string; sender_id: string; body: string; created_at: string };
-type NoticeRow = { id: string; user_id: string; title: string; body: string; href: string; read_at: string | null; created_at: string };
+type NoticeRow = { id: string; user_id: string; title: string; body: string; href: string; read_at: string | null; created_at: string; message_id?: string };
 type ActionRow = { id: string; admin_id: string; action: string; subject: string; created_at: string; reason?: string };
 
 function rows<T>(data: unknown): T[] { return Array.isArray(data) ? data as T[] : []; }
@@ -51,27 +52,30 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [syncError, setSyncError] = useState("");
   const imagePaths = useRef(new Map<string, string | null>());
+  const sessionVersion = useRef(0);
+  const sessionId = useRef<string | null | undefined>(undefined);
+  const [summary, setSummary] = useState({ unreadNotifications: 0, unreadClaims: {} as Record<string, number> });
 
-  const refresh = useCallback(async () => {
+  const load = useCallback(async () => {
+    const version = sessionVersion.current;
     try {
       // getUser contacts the Auth server; cookie presence alone is not trusted.
       const { data: auth, error: authError } = await client.auth.getUser();
       if (authError && authError.name !== "AuthSessionMissingError") throw authError;
       const signedIn = auth?.user || null;
-      setUserId(signedIn?.id ?? null);
-      setAuthEmail(signedIn?.email ?? null);
-      const [profiles, reports, emails, admins, contacts, claims, messages, notifications, activities] = await Promise.all([
+      const [profiles, reports, emails, admins, contacts, claims, notifications, activities, counts] = await Promise.all([
         client.from("profiles").select(signedIn ? "id,display_name,created_at,suspended_at" : "id,display_name,created_at").limit(500),
         client.from("reports").select("*").order("created_at", { ascending: false }).limit(500),
         signedIn ? client.from("profile_emails").select("user_id,email").limit(500) : Promise.resolve({ data: [], error: null }),
         signedIn ? client.from("admin_members").select("user_id").limit(500) : Promise.resolve({ data: [], error: null }),
         signedIn ? client.from("report_contacts").select("report_id,phone").limit(500) : Promise.resolve({ data: [], error: null }),
         signedIn ? client.from("claims").select("*").order("created_at", { ascending: false }).limit(500) : Promise.resolve({ data: [], error: null }),
-        signedIn ? client.from("messages").select("*").order("created_at", { ascending: true }).limit(500) : Promise.resolve({ data: [], error: null }),
         signedIn ? client.from("notifications").select("*").order("created_at", { ascending: false }).limit(500) : Promise.resolve({ data: [], error: null }),
         signedIn ? client.from("moderation_actions").select("*").order("created_at", { ascending: false }).limit(500) : Promise.resolve({ data: [], error: null }),
+        signedIn ? client.rpc("get_notification_summary") : Promise.resolve({ data: { unreadNotifications: 0, unreadClaims: {} }, error: null }),
       ]);
-      [profiles, reports, emails, admins, contacts, claims, messages, notifications, activities].forEach(check);
+      if (version !== sessionVersion.current) return;
+      [profiles, reports, emails, admins, contacts, claims, notifications, activities, counts].forEach(check);
       const emailById = new Map(rows<EmailRow>(emails.data).map(x => [x.user_id, x.email]));
       const adminIds = new Set(rows<AdminRow>(admins.data).map(x => x.user_id));
       const contactById = new Map(rows<ContactRow>(contacts.data).map(x => [x.report_id, x.phone]));
@@ -103,26 +107,30 @@ export function CloudProvider({ children }: { children: ReactNode }) {
         cancelledAt: c.cancelled_at || undefined, disputedAt: c.disputed_at || undefined, issueReason: c.issue_reason || undefined,
         resolvedAt: c.resolved_at || undefined, resolutionReason: c.resolution_reason || undefined,
       }));
-      const allMessages: Message[] = rows<MessageRow>(messages.data).map(m => ({
-        id: m.id, claimId: m.claim_id, senderId: m.sender_id, body: m.body, createdAt: m.created_at,
-      }));
       const allNotifications: Notification[] = rows<NoticeRow>(notifications.data).map(n => ({
         id: n.id, userId: n.user_id, title: n.title, body: n.body, href: n.href,
-        read: Boolean(n.read_at), createdAt: n.created_at,
+        read: Boolean(n.read_at), createdAt: n.created_at, messageId: n.message_id || undefined,
       }));
       const activity: Activity[] = rows<ActionRow>(activities.data).map(a => ({
         id: a.id, actorId: a.admin_id, action: a.action, subject: a.subject, createdAt: a.created_at, reason: a.reason || undefined,
       }));
-      setDB({ users, reports: allReports, claims: allClaims, messages: allMessages, notifications: allNotifications, activity });
+      setUserId(signedIn?.id ?? null);
+      setAuthEmail(signedIn?.email ?? null);
+      setSummary(counts.data as { unreadNotifications: number; unreadClaims: Record<string, number> });
+      setDB({ users, reports: allReports, claims: allClaims, messages: [], notifications: allNotifications, activity });
       setSyncError("");
     } catch (error) {
-      setSyncError(error instanceof Error ? error.message : "Unable to reach Supabase");
+      if (version === sessionVersion.current) setSyncError(error instanceof Error ? error.message : "Unable to reach Supabase");
     } finally {
-      setReady(true);
+      if (version === sessionVersion.current) setReady(true);
     }
   }, [client]);
+  const refreshQueue = useRef<() => Promise<void>>(async () => {});
+  const refresh = useCallback(() => refreshQueue.current(), []);
+  const invalidateSession = useCallback(() => { sessionVersion.current++; }, []);
 
   useEffect(() => {
+    refreshQueue.current = createRefreshQueue(load);
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const scheduleRefresh = () => {
       clearTimeout(refreshTimer);
@@ -130,15 +138,31 @@ export function CloudProvider({ children }: { children: ReactNode }) {
       refreshTimer = setTimeout(() => { void refresh(); }, 0);
     };
     scheduleRefresh();
-    const { data: { subscription } } = client.auth.onAuthStateChange(scheduleRefresh);
+    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
+      const nextId = session?.user.id ?? null;
+      if (sessionId.current !== nextId) {
+        sessionId.current = nextId;
+        invalidateSession();
+        // Hide the prior account's private snapshot before fetching the next one.
+        setDB(empty()); setUserId(null); setAuthEmail(null);
+        setSummary({ unreadNotifications: 0, unreadClaims: {} });
+      }
+      scheduleRefresh();
+    });
     const interval = setInterval(() => { void refresh(); }, 30_000);
     const onFocus = () => { if (document.visibilityState === "visible") void refresh(); };
     document.addEventListener("visibilitychange", onFocus);
-    return () => { subscription.unsubscribe(); clearTimeout(refreshTimer); clearInterval(interval); document.removeEventListener("visibilitychange", onFocus); };
-  }, [client, refresh]);
+    window.addEventListener("online", scheduleRefresh);
+    return () => { invalidateSession(); subscription.unsubscribe(); clearTimeout(refreshTimer); clearInterval(interval); document.removeEventListener("visibilitychange", onFocus); window.removeEventListener("online", scheduleRefresh); };
+  }, [client, refresh, load, invalidateSession]);
 
   const user = useMemo(() => db.users.find(u => u.id === userId && !u.suspended) || null, [db.users, userId]);
   const isAdmin = user?.role === "admin";
+  const activeUserId = user?.id;
+  useEffect(() => {
+    if (!activeUserId) return;
+    return watchPrivateUpdates(client, { userId: activeUserId, onChange: () => { void refresh(); } });
+  }, [client, activeUserId, refresh]);
   const requireUser = () => { if (!user) throw new Error("Sign in with a verified, active university email address to continue"); return user; };
 
   const makeParams = (draft: ReportDraft, path: string | null) => ({
@@ -194,10 +218,10 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     const result = await client.rpc("review_claim", { p_claim_id: claimId, p_decision: status });
     check(result); await refresh();
   };
-  const sendMessage = async (claimId: string, body: string): Promise<void> => {
-    const actor = requireUser(); const clean = body.trim();
+  const sendMessage = async (claimId: string, body: string, messageId = crypto.randomUUID()): Promise<void> => {
+    requireUser(); const clean = body.trim();
     if (!clean || clean.length > 2000) throw new Error("Message must contain 1 to 2000 characters");
-    const result = await client.from("messages").insert({ claim_id: claimId, sender_id: actor.id, body: clean });
+    const result = await client.rpc("send_claim_message", { p_claim_id: claimId, p_message_id: messageId, p_body: clean });
     check(result); await refresh();
   };
   const confirmHandover = async (claimId: string): Promise<void> => {
@@ -214,6 +238,10 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   const markAllRead = async (): Promise<void> => {
     requireUser(); check(await client.rpc("mark_all_notifications_read")); await refresh();
   };
+  const markClaimMessagesRead = useCallback(async (claimId: string, through: MessageCursor): Promise<void> => {
+    check(await client.rpc("mark_claim_messages_read", { p_claim_id: claimId, p_through_created_at: through.createdAt, p_through_id: through.id }));
+    await refresh();
+  }, [client, refresh]);
   const suspendUser = async (id: string, suspended: boolean): Promise<void> => {
     if (!isAdmin) throw new Error("Admin permissions required");
     check(await client.rpc("set_member_suspended", { p_user_id: id, p_suspended: suspended })); await refresh();
@@ -221,10 +249,10 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   const notInCloud = () => { throw new Error("Switching and creating demo users is disabled in cloud mode"); };
   const value: AppStore = {
     ready, db, user: user ? { ...user, email: authEmail || user.email } : null,
-    isAdmin, syncError,
+    isAdmin, syncError, ...summary,
     switchUser: notInCloud, registerDemo: notInCloud,
     addReport, editReport, removeReport, requestClaim, updateClaim, sendMessage, confirmHandover, manageClaim,
-    markNotificationRead, markAllRead, suspendUser, resetDemo: notInCloud,
+    markNotificationRead, markAllRead, markClaimMessagesRead, suspendUser, resetDemo: notInCloud,
   };
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

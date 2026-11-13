@@ -38,6 +38,7 @@ before(async () => {
   await db.exec(migration('202611050001_initial.sql'));
   await db.exec(migration('202611060001_report_management_privacy.sql'));
   await db.exec(migration('202611120001_two_party_handover.sql'));
+  await db.exec(migration('202611130001_private_chat_realtime.sql'));
 });
 beforeEach(async () => {
   await db.exec('reset role; truncate auth.users cascade');
@@ -143,4 +144,81 @@ test('SQL: pending claimant can cancel and make a new claim', async () => {
   const id = await submit(); await manage(id, claimant, 'cancel');
   const replacement = await submit(); assert.notEqual(id, replacement);
   await assert.rejects(confirm(replacement, owner), /Approved/);
+});
+
+test('chat SQL: cursor pages preserve tied timestamps, newest-first history and forward catch-up', async () => {
+  const id = await submit();
+  await db.query(`insert into public.messages(id,claim_id,sender_id,body,created_at)
+    select ('00000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,$1,$2,'message '||n,'2026-11-13T10:00:00.123456Z' from generate_series(1001,1120) n`, [id, owner]);
+  const latest = await as(claimant, 'select * from public.get_claim_messages($1)', [id]);
+  assert.equal(latest.length, 51); assert.equal(latest[0].id, uid(1120)); assert.equal(latest[49].id, uid(1071));
+  const before = await as(owner, 'select * from public.get_claim_messages($1,$2,$3)', [id, '2026-11-13T10:00:00.123456Z', uid(1071)]);
+  assert.equal(before[0].id, uid(1070)); assert.equal(before[49].id, uid(1021));
+  const after = await as(owner, 'select * from public.get_claim_messages($1,null,null,$2,$3)', [id, '2026-11-13T10:00:00.123456Z', uid(1001)]);
+  assert.equal(after[0].id, uid(1002)); assert.equal(after.length, 51);
+  await assert.rejects(as(owner, 'select * from public.get_claim_messages($1,now(),null)', [id]), /Invalid message cursor/);
+  await assert.rejects(as(owner, 'select * from public.get_claim_messages($1,now(),$2,now(),$2)', [id, uid(1001)]), /Invalid message cursor/);
+});
+
+test('chat SQL: history RPC respects participant RLS, active membership, Admin and anon privileges', async () => {
+  const id = await submit();
+  await as(owner, 'insert into public.messages(claim_id,sender_id,body) values($1,$2,$3)', [id, owner, 'Private details']);
+  assert.equal((await as(admin, 'select * from public.get_claim_messages($1)', [id])).length, 1);
+  await assert.rejects(as(stranger, 'select * from public.get_claim_messages($1)', [id]), /Conversation unavailable/);
+  await assert.rejects(as(null, 'select * from public.get_claim_messages($1)', [id]), /permission denied/);
+  await db.query('update public.profiles set suspended_at=now() where id=$1', [claimant]);
+  await assert.rejects(as(claimant, 'select * from public.get_claim_messages($1)', [id]), /Conversation unavailable/);
+});
+
+test('chat SQL: read cursor clears only visible message alerts of the caller and preserves later/claim alerts', async () => {
+  const id = await submit();
+  const timestamp = '2026-11-13T10:00:00.123456Z';
+  for (const number of [1001,1002]) await db.query('insert into public.messages(id,claim_id,sender_id,body,created_at) values($1,$2,$3,$4,$5)', [uid(number), id, owner, `message ${number}`, timestamp]);
+  await as(claimant, 'select public.mark_claim_messages_read($1,$2,$3)', [id, timestamp, uid(1001)]);
+  const notices = await as(claimant, 'select title,message_id,read_at from public.notifications order by message_id');
+  assert.ok(notices.find((n) => n.message_id === uid(1001)).read_at);
+  assert.equal(notices.find((n) => n.message_id === uid(1002)).read_at, null);
+  assert.equal(notices.find((n) => n.title === 'New claim request').read_at, null);
+  await assert.rejects(as(stranger, 'select public.mark_claim_messages_read($1,$2,$3)', [id, timestamp, uid(1002)]), /Conversation unavailable/);
+  await assert.rejects(as(claimant, 'select public.mark_claim_messages_read($1,$2,$3)', [id, timestamp, uid(9999)]), /Invalid message cursor/);
+  await assert.rejects(as(null, 'select public.mark_claim_messages_read($1,$2,$3)', [id, timestamp, uid(1002)]), /permission denied/);
+  const [summary] = await as(claimant, 'select public.get_notification_summary() as value');
+  assert.equal(summary.value.unreadClaims[id], 1);
+  assert.equal(summary.value.unreadNotifications, 2);
+  assert.equal((await as(owner, 'select count(*)::int n from public.notifications where read_at is not null'))[0].n, 0);
+});
+
+test('chat SQL: exact unread totals exceed the snapshot limit and remain recipient-private', async () => {
+  const id = await submit();
+  await db.query("insert into public.notifications(user_id,title,body,href) select $1,'New message','test','/claims/'||$2::text from generate_series(1,505)", [claimant,id]);
+  const [summary] = await as(claimant, 'select public.get_notification_summary() as value');
+  assert.equal(summary.value.unreadNotifications, 506); assert.equal(summary.value.unreadClaims[id], 505);
+  assert.equal((await as(stranger, 'select public.get_notification_summary() as value'))[0].value.unreadNotifications, 0);
+  await assert.rejects(as(null, 'select public.get_notification_summary()'), /permission denied/);
+});
+
+test('chat SQL: Admin messages notify both participants and required tables are published without weakening RLS', async () => {
+  const id = await submit();
+  await as(admin, 'insert into public.messages(claim_id,sender_id,body) values($1,$2,$3)', [id, admin, 'Please arrange a campus meeting']);
+  const notices = await query("select user_id,message_id from public.notifications where title='New message' order by user_id");
+  assert.deepEqual(notices.map((n) => n.user_id), [owner,claimant]); assert.ok(notices.every((n) => n.message_id));
+  assert.deepEqual((await query("select tablename from pg_publication_tables where pubname='supabase_realtime' order by tablename")).map((r) => r.tablename), ['claims','messages','notifications']);
+  assert.equal((await as(stranger, 'select * from public.messages')).length, 0);
+  assert.equal((await as(stranger, 'select * from public.notifications')).length, 0);
+});
+
+test('chat SQL: retry delivery is idempotent and enforces sender, body, closed-claim and RLS checks', async () => {
+  const id = await submit(); const messageId = uid(1001);
+  const send = (user, delivery = messageId, body = 'Arrange a safe campus handover') => as(user, 'select public.send_claim_message($1,$2,$3)', [id,delivery,body]);
+  await send(owner); await send(owner);
+  assert.equal((await query('select count(*)::int n from public.messages'))[0].n,1);
+  assert.equal((await query("select count(*)::int n from public.notifications where title='New message'"))[0].n,1);
+  await assert.rejects(send(owner,messageId,'Changed body'), /delivery ID/);
+  await assert.rejects(send(stranger,uid(1002)), /row-level security/);
+  await assert.rejects(send(owner,uid(1002),'   '), /1 to 2000/);
+  await assert.rejects(send(owner,uid(1002),'x'.repeat(2001)), /1 to 2000/);
+  await assert.rejects(send(null), /permission denied/);
+  await manage(id,claimant,'cancel');
+  await send(owner); // The previously persisted response may still be safely retried.
+  await assert.rejects(send(owner,uid(1002)), /row-level security/);
 });

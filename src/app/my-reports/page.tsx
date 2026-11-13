@@ -11,7 +11,7 @@ const PAGE_SIZE = 10;
 type Tab = "reports" | "incoming" | "outgoing";
 
 export default function MyReports() {
-  const { db, user } = useApp();
+  const { db, user, unreadClaims } = useApp();
   const [tab, setTab] = useState<Tab>("reports");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
@@ -80,7 +80,8 @@ export default function MyReports() {
             const report = db.reports.find((item) => item.id === claim.reportId);
             const personId = tab === "incoming" ? claim.claimantId : report?.ownerId;
             const person = db.users.find((item) => item.id === personId);
-            return <tr key={claim.id}><td><strong>{report?.title || "Deleted report"}</strong><small>{report?.type} report</small></td><td>{person?.name || "Campus user"}</td><td>{formatDate(claim.createdAt)}</td><td><StatusTag status={claim.status} /></td><td><Link href={`/claims/${claim.id}`} className="text-link">Open <ArrowUpRight size={14} /></Link></td></tr>;
+            const unread = unreadClaims?.[claim.id] || 0;
+            return <tr key={claim.id}><td><strong>{report?.title || "Deleted report"}</strong><small>{report?.type} report</small></td><td>{person?.name || "Campus user"}</td><td>{formatDate(claim.createdAt)}</td><td><StatusTag status={claim.status} /></td><td><Link href={`/claims/${claim.id}`} className="text-link">Open <ArrowUpRight size={14} />{unread > 0 && <span className="claim-unread">{unread} unread</span>}</Link></td></tr>;
           })}
           {filteredClaims.length === 0 && <tr><td colSpan={5}><EmptyState title={tab === "incoming" ? "No incoming claims" : "No claims submitted"} description="New requests will appear here when someone connects with one of your items." /></td></tr>}
         </tbody></table></div>

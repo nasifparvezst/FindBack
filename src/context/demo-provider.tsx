@@ -6,6 +6,7 @@ import { calculateMatchScore } from "@/lib/matching";
 import { activeClaim, applyClaimAction, canMessageClaim, reservedClaim } from "@/lib/claim-workflow";
 import type { Activity, Claim, ClaimStatus, DemoDB, Message, Notification, Report, ReportDraft, UserProfile } from "@/lib/types";
 import { validEmail, validateReport } from "@/lib/validation";
+import { compareMessages, notificationSummary, type MessageCursor } from "@/lib/chat";
 import { Context, DEMO_MODE } from "@/context/app-store";
 
 const DB_KEY = "findback_v2_demo_data";
@@ -111,15 +112,20 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     setDB(applyClaimAction(db, current.id, claimId, { type: status }, now()));
   };
 
-  const sendMessage = (claimId: string, body: string) => {
+  const sendMessage = (claimId: string, body: string, messageId = newId()) => {
     const current = mustLogin(); const claim = db.claims.find((c) => c.id === claimId); const report = db.reports.find((r) => r.id === claim?.reportId);
     if (!claim || !report) throw new Error("Conversation not found.");
     if (![claim.claimantId, report.ownerId].includes(current.id) && current.role !== "admin") throw new Error("You are not part of this conversation.");
+    const previous = db.messages.find((entry) => entry.id === messageId);
+    if (previous) {
+      if (previous.senderId === current.id && previous.claimId === claimId && previous.body === body.trim()) return;
+      throw new Error("This message delivery ID is already in use.");
+    }
     if (!canMessageClaim(claim)) throw new Error("This conversation is closed.");
     if (!body.trim() || body.trim().length > 2000) throw new Error("Message must contain 1 to 2000 characters.");
-    const otherId = current.id === report.ownerId ? claim.claimantId : report.ownerId;
-    const message: Message = { id: newId(), claimId, senderId: current.id, body: body.trim(), createdAt: now() };
-    setDB((d) => ({ ...d, messages: [...d.messages, message], notifications: [...d.notifications, notice(otherId, "New message", `${current.name} sent you a message about ${report.title}.`, `/claims/${claimId}`)] }));
+    const message: Message = { id: messageId, claimId, senderId: current.id, body: body.trim(), createdAt: now() };
+    const recipients = [...new Set([claim.claimantId, report.ownerId])].filter((id) => id !== current.id);
+    setDB((d) => ({ ...d, messages: [...d.messages, message], notifications: [...d.notifications, ...recipients.map((id) => ({ ...notice(id, "New message", `${current.name} sent you a message about ${report.title}.`, `/claims/${claimId}`), messageId: message.id, createdAt: message.createdAt }))] }));
   };
 
   const confirmHandover = (claimId: string) => { const current = mustLogin(); setDB(applyClaimAction(db, current.id, claimId, { type: "confirm" }, now())); };
@@ -127,6 +133,15 @@ export function DemoProvider({ children }: { children: ReactNode }) {
 
   const markNotificationRead = (id: string) => { const current = mustLogin(); setDB((d) => ({ ...d, notifications: d.notifications.map((n) => n.id === id && n.userId === current.id ? { ...n, read: true } : n) })); };
   const markAllRead = () => { const current = mustLogin(); setDB((d) => ({ ...d, notifications: d.notifications.map((n) => n.userId === current.id ? { ...n, read: true } : n) })); };
+  const markClaimMessagesRead = useCallback((claimId: string, through: MessageCursor) => {
+    if (!user) throw new Error("Sign in to continue.");
+    setDB((d) => ({ ...d, notifications: d.notifications.map((n) => {
+      if (n.read || n.userId !== user.id || n.title !== "New message" || n.href !== `/claims/${claimId}`) return n;
+      const message = d.messages.find((entry) => entry.id === n.messageId);
+      const visible = message ? compareMessages(message, through) <= 0 : n.createdAt <= through.createdAt;
+      return visible ? { ...n, read: true } : n;
+    }) }));
+  }, [user]);
 
   const suspendUser = (id: string, suspended: boolean) => {
     const current = mustLogin(); if (current.role !== "admin") throw new Error("Admin access required.");
@@ -136,6 +151,6 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   };
 
   const resetDemo = () => { setDB(createDemoDB()); setUserId(demoUsers[0].id); };
-  return <Context.Provider value={{ ready, db, user, isAdmin, switchUser, registerDemo, addReport, editReport, removeReport, requestClaim, updateClaim, sendMessage, confirmHandover, manageClaim, markNotificationRead, markAllRead, suspendUser, resetDemo }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ ready, db, user, isAdmin, ...notificationSummary(db.notifications, user?.id), switchUser, registerDemo, addReport, editReport, removeReport, requestClaim, updateClaim, sendMessage, confirmHandover, manageClaim, markNotificationRead, markAllRead, markClaimMessagesRead, suspendUser, resetDemo }}>{children}</Context.Provider>;
 }
 
