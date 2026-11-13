@@ -6,6 +6,8 @@ import { Plus, Search } from "lucide-react";
 import { useApp } from "@/context/app-context";
 import { EmptyState, ItemCard, PageHeading, Pagination } from "@/components/ui";
 import { CATEGORIES } from "@/lib/types";
+import { useDataPage } from "@/context/use-data-page";
+import { DataPageStatus } from "@/components/data-page-status";
 
 const PAGE_SIZE = 12;
 
@@ -19,8 +21,9 @@ export default function Browse() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
+  const remote = useDataPage({ kind: "browse", search: query, category, type, status, sort, from, to, page, pageSize: PAGE_SIZE });
 
-  const reports = useMemo(() => [...db.reports].filter((report) => {
+  const localReports = useMemo(() => [...db.reports].filter((report) => {
     const terms = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
     const haystack = `${report.title} ${report.brand} ${report.color} ${report.description} ${report.location} ${report.category}`.toLocaleLowerCase();
     return !report.hidden && terms.every((term) => haystack.includes(term)) &&
@@ -36,9 +39,11 @@ export default function Browse() {
     b.createdAt.localeCompare(a.createdAt),
   ), [db.reports, query, category, type, status, sort, from, to]);
 
-  const totalPages = Math.max(1, Math.ceil(reports.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const visibleReports = reports.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const reports = remote ? remote.ids.flatMap((id) => remote.db.reports.filter((report) => report.id === id)) : localReports;
+  const total = remote?.total ?? reports.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const currentPage = remote && !remote.loading ? remote.page : Math.min(page, totalPages);
+  const visibleReports = remote ? reports : reports.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
   const clear = () => {
     setQuery(""); setCategory("all"); setType("all"); setStatus("all");
     setSort("newest"); setFrom(""); setTo(""); setPage(1);
@@ -57,8 +62,9 @@ export default function Browse() {
         </div>
         <div className="filter-bottom"><span>Optional date range: <input aria-label="From date" className="date-filter" type="date" value={from} onChange={(event) => { setFrom(event.target.value); setPage(1); }} /> - <input aria-label="To date" className="date-filter" type="date" value={to} onChange={(event) => { setTo(event.target.value); setPage(1); }} /></span><button onClick={clear}>Clear all filters</button></div>
       </div>
-      <div className="result-summary">Showing {reports.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, reports.length)} of {reports.length} matching reports</div>
-      <div className="items-grid">{visibleReports.map((report) => <ItemCard key={report.id} report={report} />)}{reports.length === 0 && <EmptyState title="No matching items found" description="Try different keywords, dates, or categories to broaden your search." actionHref="/report/lost" actionText="Submit a report" />}</div>
+      <DataPageStatus page={remote} />
+      <div className="result-summary">Showing {total === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, total)} of {total} matching reports</div>
+      <div className="items-grid">{visibleReports.map((report) => <ItemCard key={report.id} report={report} />)}{total === 0 && !remote?.loading && !remote?.error && <EmptyState title="No matching items found" description="Try different keywords, dates, or categories to broaden your search." actionHref="/report/lost" actionText="Submit a report" />}</div>
       <Pagination page={currentPage} totalPages={totalPages} onChange={setPage} />
     </section>
   );

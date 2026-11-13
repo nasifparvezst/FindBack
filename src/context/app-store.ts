@@ -3,6 +3,7 @@
 import { createContext, useContext } from "react";
 import type { AdminAnalytics, ClaimStatus, DemoDB, ReportDraft, UserProfile } from "@/lib/types";
 import type { MessageCursor } from "@/lib/chat";
+import type { QueryPage } from "@/lib/data-pages";
 
 export { DEMO_MODE } from "@/lib/config";
 type Result<T> = T | Promise<T>;
@@ -12,6 +13,9 @@ export type AppStore = {
   user: UserProfile | null;
   isAdmin: boolean;
   syncError?: string;
+  queryPage?: QueryPage;
+  dataRevision?: number;
+  dataStats?: Record<string, number>;
   unreadNotifications?: number;
   unreadClaims?: Record<string, number>;
   switchUser: (id: string | null) => void;

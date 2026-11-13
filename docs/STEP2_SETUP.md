@@ -26,6 +26,7 @@ Open **SQL Editor > New query**. Open each SQL file from the project and run its
 3. `supabase/migrations/202611120001_two_party_handover.sql`
 4. `supabase/migrations/202611130001_private_chat_realtime.sql`
 5. `supabase/migrations/202611130002_admin_moderation.sql`
+6. `supabase/migrations/202611130003_paged_data.sql`
 
 Run only migrations not yet applied. The first creates the schema/security and Storage bucket; the second blocks public ID-card photos. The third adds two-party handover, cancel/dispute states and audited Admin resolution, preserves existing data and disables the legacy completion endpoint. Review the third migration before running it: pre-existing overlapping approved claims must be resolved first; existing approved claims will need both parties' new confirmations. No live migration has been applied by this development task.
 
@@ -34,6 +35,8 @@ In **Database > Tables**, confirm these tables exist: `profiles`, `profile_email
 The fourth migration preserves existing messages/notifications and enables the `messages`, `claims` and `notifications` tables in the `supabase_realtime` publication. Run it as the database owner using SQL Editor; it does not change participant/recipient RLS. Confirm these tables are enabled for Realtime in the Dashboard. See [Supabase Postgres Changes](https://supabase.com/docs/guides/realtime/postgres-changes) for publication and RLS behavior. Apply migrations once in filename order, then refresh the app. No live migration was applied during development.
 
 The fifth migration adds `report_flags`, report hide/restore and Admin analytics. It preserves report/claim/message data, limits hidden report visibility, blocks new claims/handover on hidden reports, and requires reasons for moderation, suspension and Admin edits. Old Admin clients must refresh to use the required reason fields. Existing owners can still edit their reports. Review this migration and apply it once after the first four; no live migration was applied during development.
+
+The sixth migration replaces capped snapshots with filtered server pages and direct item/claim contexts, adds exact counters and supporting indexes, and enables complete cursor-based CSV export. It preserves existing data and RLS. Apply it once after the first five, then refresh the app. No live migration was applied during development.
 
 ## 4. Enable email confirmation
 
@@ -107,10 +110,12 @@ Sign out and back in. Do not put this query or a service-role key in browser cod
 8. Open the same claim on two devices. Send messages both ways and verify live arrival, notification badge and claim unread count without reloading. An unrelated third account must not see either messages or private alerts. Send as Admin and verify both participants receive alerts.
 9. Load more than 50 messages and check older pages. Disconnect one browser, send more than 50 messages from the other, reconnect, and verify every missed message appears once. Retry after a lost send response and verify no duplicate message/alert. Opening the thread at its newest message must read only that user's message alerts, preserving workflow alerts and later messages. Switch accounts/sign out and verify prior private content disappears and subscriptions close.
 10. Flag a report as a third student. Confirm only the reporter and Admin can read the flag. Hide it as Admin with a reason; verify public Browse/direct-link access is denied, original claim participants retain chat access, new claims/confirmations are blocked, and data is preserved. Restore it and verify claims can continue. Test flag dismissal, owner/reporter alerts, suspension/restoration and Admin edit reasons in the audit log.
-11. Check date/status/category/type/visibility filters, table pagination and filtered CSV. Verify formula-like item titles export as text and contact numbers are excluded. Compare full-database analytics against database totals, including more than 500 rows and linked recoveries. Lists and CSV still cover only the loaded 500-record snapshots.
+11. Check date/status/category/type/visibility filters, table pagination and filtered CSV. Verify formula-like item titles export as text and contact numbers are excluded. Compare full-database analytics against database totals, including more than 500 rows and linked recoveries. Lists must reach old records and CSV must contain every filtered report, not only the current page.
+12. With more than 500 records, search an old report/claim/user/flag/audit entry, open direct item/edit/claim URLs and navigate to the oldest notifications. Check exact totals, deterministic ordering for tied timestamps and clamping after deleting the final page. Simulate network failure and Retry, rapidly change filters, cancel an export and switch accounts while a request is pending; old private results and partial CSV files must not appear.
+13. In Cloud Smart Matching, select/search an old source report and navigate candidate pages; scores rank each current page. In the report form, browse duplicate-candidate pages and optional related-report pages. Compare these flows in Demo mode. Local API/Auth stand-ins used during development do not replace real Supabase Auth/Realtime testing.
 
 ## Notes
 
 - The `report-images` bucket is public because ordinary item photos are shared. ID Card photos are blocked by the app and database constraint. Do not upload student cards, national IDs, QR codes, passwords or private documents in any category.
-- Cloud chat and notifications use Supabase Realtime with tab-focus, reconnect and 30-second refresh fallback. Chat has cursor-based history; other snapshots still use the existing latest-500 cap. Notifications show 20 loaded entries at a time, while unread totals count all alerts.
+- Cloud chat and notifications use Supabase Realtime with tab-focus, reconnect and 30-second refresh fallback. Chat uses cursor-based history, lists use server pages without the old 500-row cap, and unread totals count all alerts. Bootstrap/direct contexts remain bounded; normal refresh does not download whole tables.
 - Live SQL authorization, email delivery, production build and multi-device browser tests must be completed before deployment.

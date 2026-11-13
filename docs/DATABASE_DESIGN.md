@@ -46,6 +46,7 @@ Run in filename order in the same Supabase project:
 3. `202611120001_two_party_handover.sql` -- two-party handover, cancel/dispute workflow, reservation guards and Admin resolution audit.
 4. `202611130001_private_chat_realtime.sql` -- message cursor indexes, message-linked notifications, authorized chat history/send/read RPCs, exact unread totals and Realtime publication.
 5. `202611130002_admin_moderation.sql` -- private flags, report visibility/RLS, required moderation reasons, audited Admin edits, deletion/claim guards and full-database Admin analytics.
+6. `202611130003_paged_data.sql` -- bounded RLS data pages, relationship hydration, exact public/personal counts, direct contexts, export cursors and query indexes.
 
 Do not rerun the initial migration on a populated project. Apply later migrations once, after reviewing their effects.
 
@@ -65,7 +66,7 @@ Cloud data refreshes after actions, tab focus, reconnect and a 30-second fallbac
 
 Chat history is read separately through `get_claim_messages`, a SECURITY INVOKER RPC under existing participant/Admin RLS, using `(created_at,id)` cursors and a 51st lookahead row for 50-message pages. Reconnect catch-up reads forward until no page remains. `send_claim_message` preserves the same delivery UUID on retries. `notifications.message_id` is nullable for compatibility with old notices. `mark_claim_messages_read` only marks the caller's message alerts through an authorized displayed message cursor, and `get_notification_summary` counts only RLS-visible notifications.
 
-The remaining report/claim/notification snapshots are capped at 500 rows; broader query filtering/pagination remains future scale work. Unread counts are aggregated across all notifications, independently of the snapshot cap. No live Realtime delivery or concurrent-connection test has been performed locally.
+The former 500-row snapshots have been replaced by scoped server queries. Unread counts aggregate all notifications. No live Realtime delivery or concurrent-connection test has been performed locally.
 
 ## Admin moderation
 
@@ -73,4 +74,12 @@ The remaining report/claim/notification snapshots are capped at 500 rows; broade
 
 `flag_report` validates active membership and a 10–1000 character reason; one open flag per reporter/report is enforced by a partial unique index. `moderate_report` and `dismiss_report_flag` lock the report before the flag, require Admin and a reason, and append immutable-to-client audit entries. Owner alerts include the moderation reason; reporter outcomes use generic alerts. The flag reason is not copied into the owner's alert. Suspension and Admin edits also require a reason; cached legacy RPC calls cannot bypass it. The original editor implementation is retained internally with client EXECUTE revoked, preserving existing field validation.
 
-`get_admin_analytics` checks active Admin membership and aggregates all records, with inclusive UTC date boundaries for report/claim creation. It counts linked returned reports as one recovery, and returns category counts and six months ending at the To date (or current UTC month). User and open-flag totals cover all dates. Lists, audit history and CSV still use up to 500 loaded rows per table; analytics are independent of that limit.
+`get_admin_analytics` checks active Admin membership and aggregates all records, with inclusive UTC date boundaries for report/claim creation. It counts linked returned reports as one recovery, and returns category counts and six months ending at the To date (or current UTC month). User and open-flag totals cover all dates. Lists and audit history now use server pages; CSV walks the entire filtered report set.
+
+## Paged query contract
+
+`get_data_page(jsonb)` is SECURITY INVOKER. Its scope selects a fixed table/query template; search values, dates, UUIDs and filters are bound parameters. Unknown scopes, invalid Browse sorts, invalid ranges and page sizes outside 1–100 are rejected. Admin scopes also require active Admin membership, and personal scopes require active membership. Existing report/claim/notification/flag RLS applies to counts and rows. `get_page_bundle` hydrates bounded IDs and their relationships under the same RLS; it cannot expose another member's private email, contact, messages or flags.
+
+Responses include primary IDs in stable sort order, exact total, clamped page, page size, server timestamp, context counts and a related-row bundle. The Cloud provider retains only bootstrap or direct-route context. List components retain their current page, abort superseded requests and hide stale results by query/account identity. Bootstrap fetches four public reports plus exact public/personal counters. `get_public_report_stats` is a fixed SECURITY DEFINER aggregate over visible reports and completed recovery pairs; it exposes no claim rows or private identifiers.
+
+Browse uses item-date filters; Admin uses inclusive UTC creation dates. Candidate queries restrict matching/duplicate pools before pagination without changing the TypeScript scoring algorithms. Indexes cover owner/claimant/recipient cursors, report candidates, public newest reports, flags and audit ordering. Numbered pages use OFFSET with exact counts; very deep pages and broad substring searches still need production query-plan validation. CSV instead uses a timestamp/UUID cursor and a server watermark to avoid repeated rows or later inserts; concurrent edits are not a transaction-wide snapshot.

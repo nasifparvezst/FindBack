@@ -8,7 +8,9 @@ import { DEMO_MODE, useApp } from "@/context/app-context";
 import { CATEGORIES, type Report, type ReportDraft, type ReportType } from "@/lib/types";
 import { todayLocalISO, validateReport } from "@/lib/validation";
 import { findPossibleDuplicates } from "@/lib/duplicates";
-import { PageHeading } from "@/components/ui";
+import { PageHeading, Pagination } from "@/components/ui";
+import { useDataPage } from "@/context/use-data-page";
+import { DataPageStatus } from "@/components/data-page-status";
 
 const blank = (type: ReportType): ReportDraft => ({
   type, title: "", category: "Phone", brand: "", color: "", location: "",
@@ -63,12 +65,16 @@ export function ReportForm({ type, existing }: { type: ReportType; existing?: Re
   const [moderationReason, setModerationReason] = useState("");
   const adminEditing = user?.role === "admin" && existing && existing.ownerId !== user.id;
   const [fileName, setFileName] = useState(existing?.image && existing.category !== "ID Card" ? "Current photo" : "");
-  const set = <K extends keyof ReportDraft>(key: K, value: ReportDraft[K]) =>
+  const [duplicatePage,setDuplicatePage]=useState(1);
+  const duplicateCandidates=useDataPage({kind:"duplicates",type:form.type,category:form.category,occurredOn:form.occurredOn,id:existing?.id,page:duplicatePage,pageSize:100},Boolean(user&&form.occurredOn&&(form.title.trim()||form.brand.trim())));
+  const set = <K extends keyof ReportDraft>(key: K, value: ReportDraft[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
+    if (["category","type","occurredOn"].includes(key)) setDuplicatePage(1);
+  };
 
   const possibleDuplicates = useMemo(
-    () => findPossibleDuplicates(form, db.reports, existing?.id),
-    [form, db.reports, existing?.id],
+    () => findPossibleDuplicates(form, duplicateCandidates?.db.reports||db.reports, existing?.id),
+    [form, db.reports, existing?.id, duplicateCandidates],
   );
 
   const chooseCategory = (value: ReportDraft["category"]) => {
@@ -137,6 +143,8 @@ export function ReportForm({ type, existing }: { type: ReportType; existing?: Re
           <h2>Item information</h2>
           <p className="subtext">Fields marked * are required. Share enough detail to identify the item.</p>
           {error && <div className="form-error" role="alert">{error}</div>}
+          <DataPageStatus page={duplicateCandidates}/>
+          {duplicateCandidates&&duplicateCandidates.total>100&&<div className="info-note"><span>Duplicate warnings check this page of {duplicateCandidates.total} compatible reports. Check other pages before submitting.<Pagination page={duplicateCandidates.page} totalPages={Math.ceil(duplicateCandidates.total/100)} onChange={setDuplicatePage}/></span></div>}
 
           {possibleDuplicates.length > 0 && (
             <div className="duplicate-warning" role="status">

@@ -4,24 +4,28 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, ClipboardCheck, Edit3, MessageCircle, ShieldCheck, Trash2 } from "lucide-react";
-import { CategoryArt, EmptyState, InfoNote, InlineMeta, StatusTag, TypeTag } from "@/components/ui";
+import { CategoryArt, EmptyState, InfoNote, InlineMeta, Pagination, StatusTag, TypeTag } from "@/components/ui";
 import { useApp } from "@/context/app-context";
 import { formatDate, shortId } from "@/lib/format";
 import { activeClaim } from "@/lib/claim-workflow";
 import { canReadReport } from "@/lib/moderation";
 import { ReportFlagForm } from "@/components/report-flag-form";
+import { useDataPage } from "@/context/use-data-page";
+import { DataPageStatus } from "@/components/data-page-status";
 
 export default function ItemDetails() {
   const { id } = useParams<{id:string}>(); const router=useRouter();
-  const { db,user,isAdmin,removeReport,requestClaim }=useApp();
+  const { db,user,isAdmin,removeReport,requestClaim,dataStats }=useApp();
   const [message,setMessage]=useState("");const [relatedReportId,setRelatedReportId]=useState("");const [error,setError]=useState("");const [claimOpen,setClaimOpen]=useState(false);
   const report=db.reports.find((r)=>r.id===id);
+  const [relatedPage,setRelatedPage]=useState(1);
+  const relatedRemote=useDataPage({kind:"related",id,page:relatedPage,pageSize:20},Boolean(claimOpen&&user&&report&&!report.hidden));
   if(!report||!canReadReport(db,user?.id,report))return <div className="container page-section"><EmptyState title="Report not found" description="The report you opened may have been removed or hidden." actionHref="/browse" actionText="Browse items"/></div>;
   const owner=db.users.find((u)=>u.id===report.ownerId);const mine=!!user&&(user.id===report.ownerId||isAdmin);
   const claims=db.claims.filter((c)=>c.reportId===id);
   const approvedClaim=claims.find((c)=>c.status==="approved"||c.status==="disputed");
   const existingClaim=claims.find((c)=>c.claimantId===user?.id&&activeClaim(c));
-  const myRelatedReports=db.reports.filter((r)=>!r.hidden&&r.ownerId===user?.id&&r.type!==report.type&&r.category===report.category&&r.status==="open"&&r.id!==report.id);
+  const myRelatedReports=(relatedRemote?.db.reports||db.reports).filter((r)=>!r.hidden&&r.ownerId===user?.id&&r.type!==report.type&&r.category===report.category&&r.status==="open"&&r.id!==report.id);
   const submitClaim=async (e:React.FormEvent)=>{
     e.preventDefault();setError("");
     try{const claimId=await requestClaim(id,message,relatedReportId||undefined);router.push(`/claims/${claimId}`);}
@@ -49,8 +53,8 @@ export default function ItemDetails() {
       <div className="info-row"><span className="key">Item date</span><span className="value">{formatDate(report.occurredOn)}</span></div>
       <div className="info-row"><span className="key">Location</span><span className="value">{report.location}</span></div>
       <div className="info-row"><span className="key">Category</span><span className="value">{report.category}</span></div>
-      {mine? <><div className="claim-callout"><h4><ClipboardCheck size={15} style={{verticalAlign:"middle",marginRight:5}}/> Claim requests: {claims.length}</h4><p>Review submitted requests, verify ownership and communicate privately.</p><Link href="/my-reports" className="text-link">Review claims <ArrowRight size={15}/></Link></div></> : report.hidden ? existingClaim&&<Link className="btn btn-outline" href={`/claims/${existingClaim.id}`}>Open existing conversation</Link> : report.status==="open" ? <>
-        {existingClaim?<Link className="btn btn-primary" href={`/claims/${existingClaim.id}`}><MessageCircle size={17}/> View your claim</Link>: <><button className="btn btn-primary" onClick={()=>user?setClaimOpen(!claimOpen):router.push("/login")}><MessageCircle size={17}/> Request to {report.type==="found"?"claim item":"contact owner"}</button>{claimOpen&&<form className="claim-callout" onSubmit={submitClaim}><h4>Share safe identifying details</h4><p>Describe a distinctive mark, case, contents or approximate loss time. Never send passwords, PINs, full ID numbers or identity-document photos.</p><label htmlFor="claim-evidence">Private ownership evidence</label><textarea id="claim-evidence" required minLength={12} maxLength={2000} value={message} onChange={(e)=>setMessage(e.target.value)} placeholder="Describe a non-public identifying detail..."/>{myRelatedReports.length>0&&<div className="field" style={{marginTop:9}}><label htmlFor="related">Link your own {report.type==="found"?"lost":"found"} report (optional)</label><select id="related" value={relatedReportId} onChange={(e)=>setRelatedReportId(e.target.value)}><option value="">No linked report</option>{myRelatedReports.map((r)=><option key={r.id} value={r.id}>{r.title}</option>)}</select></div>}<button type="submit" className="btn btn-primary btn-sm"><MessageCircle size={14}/> Send Claim Request</button></form>}</>}
+      {mine? <><div className="claim-callout"><h4><ClipboardCheck size={15} style={{verticalAlign:"middle",marginRight:5}}/> Claim requests: {dataStats?.claimCount ?? claims.length}</h4><p>Review submitted requests, verify ownership and communicate privately.</p><Link href="/my-reports" className="text-link">Review claims <ArrowRight size={15}/></Link></div></> : report.hidden ? existingClaim&&<Link className="btn btn-outline" href={`/claims/${existingClaim.id}`}>Open existing conversation</Link> : report.status==="open" ? <>
+        {existingClaim?<Link className="btn btn-primary" href={`/claims/${existingClaim.id}`}><MessageCircle size={17}/> View your claim</Link>: <><button className="btn btn-primary" onClick={()=>user?setClaimOpen(!claimOpen):router.push("/login")}><MessageCircle size={17}/> Request to {report.type==="found"?"claim item":"contact owner"}</button>{claimOpen&&<form className="claim-callout" onSubmit={submitClaim}><h4>Share safe identifying details</h4><p>Describe a distinctive mark, case, contents or approximate loss time. Never send passwords, PINs, full ID numbers or identity-document photos.</p><label htmlFor="claim-evidence">Private ownership evidence</label><textarea id="claim-evidence" required minLength={12} maxLength={2000} value={message} onChange={(e)=>setMessage(e.target.value)} placeholder="Describe a non-public identifying detail..."/><DataPageStatus page={relatedRemote}/>{myRelatedReports.length>0&&<div className="field" style={{marginTop:9}}><label htmlFor="related">Link your own {report.type==="found"?"lost":"found"} report (optional)</label><select id="related" value={relatedReportId} onChange={(e)=>setRelatedReportId(e.target.value)}><option value="">No linked report</option>{myRelatedReports.map((r)=><option key={r.id} value={r.id}>{r.title}</option>)}</select></div>}{relatedRemote&&<Pagination page={relatedRemote.page} totalPages={Math.max(1,Math.ceil(relatedRemote.total/20))} onChange={(page)=>{setRelatedPage(page);setRelatedReportId("");}}/>}<button type="submit" className="btn btn-primary btn-sm"><MessageCircle size={14}/> Send Claim Request</button></form>}</>}
       </> : <InfoNote>This item has been marked returned. Claims are closed.</InfoNote>}
       <p className="privacy-note"><ShieldCheck size={14} style={{verticalAlign:"middle",marginRight:5}}/>Contact numbers are not displayed publicly. Please use the claim process for communication.</p>
       {user&&user.id!==report.ownerId&&!report.hidden&&<ReportFlagForm key={report.id} reportId={report.id}/>}

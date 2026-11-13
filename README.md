@@ -2,7 +2,7 @@
 
 A Next.js 16 + React 19 + TypeScript campus lost-and-found application. Step 3 improves report creation and editing, duplicate warnings, browsing, My Reports management, image privacy and storage cleanup.
 
-> **Release status:** The Step 3 baseline includes Phases 1–4: Smart Matching, two-party handover, private realtime chat/notifications, and Admin moderation/analytics. Phase 4 passed 16 targeted Demo/SQL tests, TypeScript, changed-file lint and browser workflow checks. Live Supabase, email and concurrent multi-device testing remain required before deployment. A full build/suite is deferred to the requested final audit.
+> **Release status:** Phases 1–5 are implemented, including server-side filtering and pagination without the former 500-record snapshot cap. Phase 5 passed 15 targeted logic/SQL tests, TypeScript, changed-file lint, Demo browser checks and Cloud-mode browser checks against a disposable local API/database fixture with 550+ records. Real Supabase Auth/Realtime, email and concurrent multi-device verification remain required. A full build/suite is deferred to the requested final audit.
 
 ## Requirements
 
@@ -38,6 +38,7 @@ Read `docs/STEP2_SETUP.md`. In summary:
    - `supabase/migrations/202611120001_two_party_handover.sql`
    - `supabase/migrations/202611130001_private_chat_realtime.sql`
    - `supabase/migrations/202611130002_admin_moderation.sql`
+   - `supabase/migrations/202611130003_paged_data.sql`
 3. Configure the email confirmation and password recovery templates/redirect URLs.
 4. Copy the Supabase Project URL and publishable key into `.env.local`.
 5. Set `NEXT_PUBLIC_DEMO_MODE=false` and restart the dev server.
@@ -78,6 +79,7 @@ npm test
 npm run test:claims
 npm run test:chat
 npm run test:admin
+npm run test:paging
 npm run build
 ```
 
@@ -97,7 +99,7 @@ Cloud mode requires the third migration above. It preserves existing reports/cla
 
 Cloud mode subscribes to authorized claim changes, the signed-in recipient's notifications, and messages for the open conversation. Subscriptions are removed on account/conversation changes and unmount. Events trigger authorized database reads; periodic refresh, returning to the tab and reconnect reconcile missed updates. Chat history loads the latest 50 messages, with cursor-based older pages and multi-page reconnect catch-up. Message retries reuse a delivery UUID to prevent duplicate messages and alerts.
 
-The header and claim list show unread counts. Opening a visible conversation at its newest messages reads message alerts through the displayed cursor; claim-status alerts and later arrivals remain unread. Admin messages notify both participants. Notification lists show 20 entries at a time from the existing latest-500 snapshot; unread totals include all records. Scaling the remaining report/claim/notification snapshots is a later phase.
+The header and claim list show unread counts. Opening a visible conversation at its newest messages reads message alerts through the displayed cursor; claim-status alerts and later arrivals remain unread. Admin messages notify both participants. Notifications now use 20-entry server pages without a snapshot cap; unread totals include all records.
 
 Apply the fourth migration after the earlier three before enabling Cloud mode. It adds message-linked alerts and RPCs and includes `messages`, `claims` and `notifications` in the Supabase Realtime publication without weakening RLS. `npm run test:chat` runs the targeted chat logic and PostgreSQL tests; mock subscriptions verify reconnect/cleanup behavior, while local PostgreSQL verifies pagination, read cursors, idempotency and access control. Actual Supabase WebSocket delivery still requires a configured project and two devices. See `docs/STEP2_SETUP.md`.
 
@@ -107,7 +109,17 @@ Students can privately flag another member's visible report, with one open flag 
 
 Admin suspension/restoration and editing another member's report require audit reasons. Admins moderate other members' reports through hide/restore instead of permanent deletion. Owners cannot delete hidden reports or reports with open flags. Existing owner editing remains available, and editing never automatically restores a hidden report. Hiding does not revoke previously shared public Storage image URLs.
 
-Dashboard tables support filters, search and pagination; CSV exports the filtered report snapshot without contact data and neutralizes spreadsheet formulas. Date-filtered metrics and six-month/category charts use a full-database Admin-only aggregate RPC, independently of the 500-record list cap. Dates use UTC; users and open flags are counted across all dates. Apply the fifth migration after the first four before enabling Cloud mode. `npm run test:admin` runs the targeted moderation tests without the complete suite. Broader server-side list pagination remains Phase 5 work.
+Dashboard tables support server filters, search and pagination; CSV exports all filtered reports without contact data and neutralizes spreadsheet formulas. Date-filtered metrics and six-month/category charts use a full-database Admin-only aggregate RPC. Dates use UTC; users and open flags are counted across all dates. Apply the fifth migration after the first four before enabling Cloud mode. `npm run test:admin` runs the targeted moderation tests without the complete suite.
+
+## Phase 5 paged data and reliability
+
+Cloud startup loads four recent public reports and exact public/personal counts. Browse, My Reports, incoming/outgoing claims, notifications and every Admin table query only the selected server page, with filters applied before counting/pagination. Pages use stable ID tie-breakers, exact totals and bounds of 1–100 rows; unavailable last pages clamp after deletions. Page bundles hydrate only their related reports/profiles and RLS-visible fields. Direct item/edit/claim routes fetch their IDs instead of depending on a recent-record snapshot. The browser discards pages on filter/account changes and aborts obsolete requests; failed requests offer Retry.
+
+Cloud Smart Matching selects an open source report, then ranks each 25-candidate page with the existing Phase 1 score. Candidates are filtered by category, opposite type, owner, visibility and the 30-day window. Source reports are searchable and paged, so older reports remain reachable. Scores rank the current candidate page, not all campus pairs globally. Duplicate warnings examine 100 compatible reports per page within the existing 14-day window; the form can browse further candidate pages. Optional related reports in a claim are also paged. Demo mode retains its browser-local data flow.
+
+Admin CSV walks every filtered report page using `(created_at,id)` cursors and a server timestamp, supports cancellation, and downloads only after all pages succeed. Newer inserts are excluded; updates/deletions during export reflect the state when fetched, not a transaction-wide snapshot. Normal browsing never automatically downloads an entire table.
+
+Apply the sixth migration once after the earlier five. `npm run test:paging` verifies paging beyond 500, literal search/filter/sort, RLS, direct contexts, complete exports, cancellation and decoding. Browser verification used an isolated local PGlite API with stand-in Auth responses; it does not establish live Supabase authentication or WebSocket delivery.
 
 ## Scope decisions
 

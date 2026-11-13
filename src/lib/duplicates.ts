@@ -41,6 +41,7 @@ export function findPossibleDuplicates(
   return reports
     .filter((report) =>
       report.id !== excludeReportId &&
+      !report.hidden &&
       report.status === "open" &&
       report.type === draft.type &&
       report.category === draft.category,

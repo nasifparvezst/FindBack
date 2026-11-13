@@ -40,6 +40,7 @@ before(async () => {
   await db.exec(migration('202611120001_two_party_handover.sql'));
   await db.exec(migration('202611130001_private_chat_realtime.sql'));
   await db.exec(migration('202611130002_admin_moderation.sql'));
+  await db.exec(migration('202611130003_paged_data.sql'));
 });
 beforeEach(async () => {
   await db.exec('reset role; truncate auth.users cascade');
@@ -322,4 +323,68 @@ test('moderation SQL: recovery analytics deduplicate linked reports and retain h
   let [r]=await as(admin,'select public.get_admin_analytics(null,$1) as value',['2026-02-28']);
   assert.equal(r.value.recoveredItems,1);assert.equal(r.value.returnedReports,2);assert.equal(r.value.hiddenReports,1);
   [r]=await as(admin,'select public.get_admin_analytics($1,$2) as value',['2026-02-01','2026-02-28']);assert.equal(r.value.recoveredItems,1);assert.equal(r.value.totalReports,1);
+});
+
+const dataPage=(user,query)=>as(user,'select public.get_data_page($1) as value',[JSON.stringify(query)]).then(rows=>rows[0].value);
+test('paging SQL: browse reaches 500+ records with stable tied timestamps, exact totals and clamped pages',async()=>{
+  await db.query("insert into public.reports(id,owner_id,type,title,category,location,occurred_on,description,created_at) select ('00000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,$1,'found','Boundary phone','Phone','Campus Library',current_date,'Transparent blue case on phone','2026-11-01T00:00:00.123456Z' from generate_series(1001,1550) n",[owner]);
+  const one=await dataPage(null,{kind:'browse',search:'Boundary phone',pageSize:100});const last=await dataPage(null,{kind:'browse',search:'Boundary phone',pageSize:100,page:999});
+  assert.equal(one.total,550);assert.equal(one.ids.length,100);assert.equal(last.page,6);assert.equal(last.ids.length,50);assert.equal(last.ids.at(-1),uid(1001));
+  assert.equal(one.bundle.reports.length,100);assert.equal(one.bundle.profiles.length,1);assert.equal(one.bundle.contacts,undefined);
+  assert.equal(new Set([...one.ids,...last.ids]).size,150);
+  const bootstrap=await dataPage(null,{kind:'bootstrap'});assert.equal(bootstrap.ids.length,4);assert.equal(bootstrap.stats.totalReports,552);
+});
+test('paging SQL: filters and sorts run before pagination and treat search text literally',async()=>{
+  await db.query("update public.reports set title='Blue 100% phone',location='Room _ A' where id=$1",[found]);
+  let result=await dataPage(null,{kind:'browse',search:'100% _',type:'found',category:'Phone',status:'open',sort:'alphabetical',pageSize:1});assert.deepEqual(result.ids,[found]);assert.equal(result.total,1);
+  result=await dataPage(null,{kind:'browse',search:'%wildcard%'});assert.equal(result.total,0);
+  await assert.rejects(dataPage(null,{kind:'browse',pageSize:101}),/Invalid page/);await assert.rejects(dataPage(null,{kind:'browse',page:0}),/Invalid page/);
+  await assert.rejects(dataPage(null,{kind:'browse',sort:'title; drop table reports'}),/Invalid sort/);
+  await assert.rejects(dataPage(null,{kind:'browse',from:'2026-12-01',to:'2026-01-01'}),/From date/);
+});
+test('paging SQL: private scopes and direct bundles preserve claim, flag, email and hidden-report RLS',async()=>{
+  const id=await submit();await flag();await moderate();
+  await assert.rejects(dataPage(stranger,{kind:'admin_reports'}),/Admin/);await assert.rejects(dataPage(null,{kind:'notifications'}),/active/);
+  const other=await dataPage(stranger,{kind:'claim',id});assert.equal(other.ids.length,0);assert.equal(other.bundle.claims.length,0);
+  const mine=await dataPage(claimant,{kind:'claim',id});assert.equal(mine.bundle.claims.length,1);assert.equal(mine.bundle.reports.length,2);
+  assert.ok(mine.bundle.emails.every(e=>e.user_id===claimant));assert.equal(mine.bundle.contacts.length,0);
+  const hidden=await dataPage(stranger,{kind:'report',id:found});assert.equal(hidden.ids.length,0);
+  const visible=await dataPage(owner,{kind:'report',id:found});assert.deepEqual(visible.ids,[found]);assert.equal(visible.stats.claimCount,1);
+  const [bundle]=await as(stranger,'select public.get_page_bundle($1,$2,$3,$4,$5,$6) as value',[[found],[id],[owner],[],[],[]]);assert.equal(bundle.value.reports.length,0);assert.equal(bundle.value.claims.length,0);assert.ok(bundle.value.emails.every(e=>e.user_id===stranger));
+});
+test('paging SQL: my reports, claims and notifications can read old rows beyond unrelated newer data',async()=>{
+  const id=await submit();await flag();
+  assert.deepEqual((await dataPage(owner,{kind:'incoming'})).ids,[id]);assert.equal((await dataPage(stranger,{kind:'incoming'})).total,0);
+  assert.deepEqual((await dataPage(claimant,{kind:'outgoing'})).ids,[id]);assert.deepEqual((await dataPage(claimant,{kind:'my_reports'})).ids,[lost]);
+  const page=await dataPage(claimant,{kind:'notifications',pageSize:1,page:999});assert.equal(page.ids.length,1);assert.ok(page.bundle.notifications.every(n=>n.user_id===claimant));
+  const bootstrap=await dataPage(owner,{kind:'bootstrap'});assert.equal(bootstrap.stats.myReports,1);assert.equal(bootstrap.stats.pendingIncoming,1);
+  const adminPage=await dataPage(admin,{kind:'admin_users',search:'student2@'});assert.deepEqual(adminPage.ids,[stranger]);
+});
+test('paging SQL: compatible related, matching and duplicate candidates are filtered before their pages',async()=>{
+  assert.deepEqual((await dataPage(claimant,{kind:'related',id:found})).ids,[lost]);
+  assert.deepEqual((await dataPage(null,{kind:'match_candidates',id:lost})).ids,[found]);
+  assert.deepEqual((await dataPage(claimant,{kind:'match_sources'})).ids,[lost]);
+  const today=(await query('select current_date::text value'))[0].value;
+  assert.deepEqual((await dataPage(owner,{kind:'duplicates',type:'found',category:'Phone',occurredOn:today})).ids,[found]);
+  await moderate();assert.equal((await dataPage(null,{kind:'match_candidates',id:lost})).total,0);
+});
+test('paging SQL: CSV cursor excludes later inserts and advances through tied report timestamps',async()=>{
+  await db.query("update public.reports set created_at='2026-01-01T00:00:00.123456Z'");
+  const first=await dataPage(admin,{kind:'admin_reports',forExport:true,pageSize:1});assert.equal(first.ids[0],lost);
+  await db.query("insert into public.reports(owner_id,type,title,category,location,occurred_on,description) values($1,'found','New phone','Phone','Campus Library',current_date,'A newly posted transparent case')",[owner]);
+  const second=await dataPage(admin,{kind:'admin_reports',forExport:true,pageSize:1,snapshot:first.snapshot,cursorAt:'2026-01-01T00:00:00.123456Z',cursorId:lost});assert.deepEqual(second.ids,[found]);
+  await assert.rejects(dataPage(null,{kind:'browse',forExport:true}),/export scope/);
+});
+
+test('paging SQL: item context retains the reserved claim despite many newer related pending claims and scopes contacts',async()=>{
+  const id=await submit();
+  for(let n=201;n<=206;n++){
+    await db.query("insert into public.reports(id,owner_id,type,title,category,location,occurred_on,description) values($1,$2,'lost','Other phone','Phone','Campus Library',current_date,'Another clear phone case with blue sticker')",[uid(n),stranger]);
+    await as(owner,'select public.submit_claim($1,$2,$3)',[uid(n),'The distinctive blue phone sticker',found]);
+  }
+  await review(id);
+  await db.query('insert into public.report_contacts(report_id,phone) values($1,$2),($3,$4)',[found,'01712345678',lost,'01812345678']);
+  const context=await dataPage(owner,{kind:'report',id:found});assert.deepEqual(context.bundle.claims.map(c=>c.id),[id]);assert.equal(context.stats.claimCount,1);
+  assert.deepEqual(context.bundle.contacts.map(c=>c.report_id),[found]);
+  const other=await dataPage(claimant,{kind:'claim',id});assert.deepEqual(other.bundle.contacts.map(c=>c.report_id),[lost]);
 });

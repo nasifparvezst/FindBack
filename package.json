@@ -11,10 +11,11 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "tsc --target ES2022 --module commonjs --outDir .test-build src/lib/types.ts src/lib/matching.ts src/lib/validation.ts src/lib/statistics.ts src/lib/duplicates.ts src/lib/claim-workflow.ts src/lib/chat.ts src/lib/realtime.ts src/lib/moderation.ts && node --test tests/*.test.cjs",
+    "test": "tsc --target ES2022 --module commonjs --outDir .test-build src/lib/types.ts src/lib/matching.ts src/lib/validation.ts src/lib/statistics.ts src/lib/duplicates.ts src/lib/claim-workflow.ts src/lib/chat.ts src/lib/realtime.ts src/lib/moderation.ts src/lib/data-pages.ts src/lib/cloud-data.ts && node --test tests/*.test.cjs",
     "test:claims": "tsc --target ES2020 --module commonjs --outDir .test-build src/lib/types.ts src/lib/claim-workflow.ts && node --test tests/claims.test.cjs tests/claims-sql.test.cjs",
     "test:chat": "tsc --target ES2022 --module commonjs --outDir .test-build src/lib/types.ts src/lib/chat.ts src/lib/realtime.ts && node --test --test-name-pattern=chat tests/chat.test.cjs tests/claims-sql.test.cjs",
-    "test:admin": "tsc --target ES2022 --module commonjs --outDir .test-build src/lib/types.ts src/lib/moderation.ts src/lib/matching.ts src/lib/claim-workflow.ts && node --test --test-name-pattern=moderation tests/moderation.test.cjs tests/claims-sql.test.cjs"
+    "test:admin": "tsc --target ES2022 --module commonjs --outDir .test-build src/lib/types.ts src/lib/moderation.ts src/lib/matching.ts src/lib/claim-workflow.ts && node --test --test-name-pattern=moderation tests/moderation.test.cjs tests/claims-sql.test.cjs",
+    "test:paging": "tsc --target ES2022 --module commonjs --outDir .test-build src/lib/types.ts src/lib/data-pages.ts src/lib/cloud-data.ts src/lib/duplicates.ts && node --test --test-name-pattern=paging tests/paging.test.cjs tests/claims-sql.test.cjs"
   },
   "dependencies": {
     "next": "^16.0.0",

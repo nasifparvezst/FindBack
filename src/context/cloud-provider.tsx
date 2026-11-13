@@ -1,32 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { Context, type AppStore } from "@/context/app-store";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { validateReport } from "@/lib/validation";
 import { createRefreshQueue, type MessageCursor } from "@/lib/chat";
 import { watchPrivateUpdates } from "@/lib/realtime";
 import { moderationReason, validateAdminDates } from "@/lib/moderation";
-import type { Activity, AdminAnalytics, Category, Claim, ClaimStatus, DemoDB, Notification, Report, ReportDraft, ReportFlag, ReportStatus, ReportType, UserProfile } from "@/lib/types";
+import { routeQuery, type DataQuery } from "@/lib/data-pages";
+import { decodeDataPage } from "@/lib/cloud-data";
+import type { AdminAnalytics, ClaimStatus, DemoDB, ReportDraft } from "@/lib/types";
 
-type ProfileRow = { id: string; display_name: string; created_at: string; suspended_at: string | null };
-type EmailRow = { user_id: string; email: string };
-type AdminRow = { user_id: string };
-type ReportRow = {
-  id: string; owner_id: string; type: string; title: string; category: string; brand: string;
-  color: string; location: string; occurred_on: string; description: string;
-  image_path: string | null; status: string; linked_report_id: string | null;
-  created_at: string; updated_at: string;
-  hidden?: boolean; moderated_at?: string;
-};
-type ContactRow = { report_id: string; phone: string };
-type ClaimRow = { id: string; report_id: string; related_report_id: string | null; claimant_id: string; message: string; status: string; created_at: string; updated_at: string;
-  reviewed_at?: string; owner_confirmed_at?: string; claimant_confirmed_at?: string; completed_at?: string; cancelled_at?: string; disputed_at?: string; issue_reason?: string; resolved_at?: string; resolution_reason?: string };
-type NoticeRow = { id: string; user_id: string; title: string; body: string; href: string; read_at: string | null; created_at: string; message_id?: string };
-type ActionRow = { id: string; admin_id: string; action: string; subject: string; created_at: string; reason?: string };
-type FlagRow = { id: string; report_id: string; reporter_id: string; reason: string; status: ReportFlag["status"]; created_at: string; resolved_at?: string; resolved_by?: string; resolution_reason?: string };
-
-function rows<T>(data: unknown): T[] { return Array.isArray(data) ? data as T[] : []; }
 function empty(): DemoDB { return { users: [], reports: [], claims: [], messages: [], notifications: [], activity: [] }; }
 function check(result: { error: { message: string } | null }): void { if (result.error) throw new Error(result.error.message); }
 function checkClaimRpc(result: { error: { message: string; code?: string } | null }): void {
@@ -48,6 +33,7 @@ async function storePhoto(client: ReturnType<typeof createSupabaseBrowserClient>
 }
 
 export function CloudProvider({ children }: { children: ReactNode }) {
+  const path = usePathname();
   const client = useMemo(() => createSupabaseBrowserClient(), []);
   const [db, setDB] = useState<DemoDB>(empty);
   const [userId, setUserId] = useState<string | null>(null);
@@ -59,78 +45,41 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   const sessionId = useRef<string | null | undefined>(undefined);
   const [summary, setSummary] = useState({ unreadNotifications: 0, unreadClaims: {} as Record<string, number> });
 
+  const [contextPath, setContextPath] = useState('');
+  const [dataRevision, setDataRevision] = useState(0);
+  const [dataStats, setDataStats] = useState<Record<string, number>>({});
+  const queryPage = useCallback(async (query: DataQuery, signal?: AbortSignal) => {
+    const version = sessionVersion.current;
+    signal?.throwIfAborted();
+    const request = client.rpc('get_data_page', { p_query: query });
+    const result = await (signal ? request.abortSignal(signal) : request);
+    if (version !== sessionVersion.current) throw new DOMException('Account changed', 'AbortError');
+    signal?.throwIfAborted();
+    if (result.error?.code === 'PGRST202') throw new Error('Apply the Phase 5 migration: 202611130003_paged_data.sql, then refresh.');
+    check(result);
+    return decodeDataPage(result.data, (path) => client.storage.from('report-images').getPublicUrl(path).data.publicUrl);
+  }, [client]);
   const load = useCallback(async () => {
     const version = sessionVersion.current;
     try {
-      // getUser contacts the Auth server; cookie presence alone is not trusted.
       const { data: auth, error: authError } = await client.auth.getUser();
-      if (authError && authError.name !== "AuthSessionMissingError") throw authError;
+      if (authError && authError.name !== 'AuthSessionMissingError') throw authError;
       const signedIn = auth?.user || null;
-      const [profiles, reports, emails, admins, contacts, claims, notifications, activities, counts, flags] = await Promise.all([
-        client.from("profiles").select(signedIn ? "id,display_name,created_at,suspended_at" : "id,display_name,created_at").limit(500),
-        client.from("reports").select("*").order("created_at", { ascending: false }).limit(500),
-        signedIn ? client.from("profile_emails").select("user_id,email").limit(500) : Promise.resolve({ data: [], error: null }),
-        signedIn ? client.from("admin_members").select("user_id").limit(500) : Promise.resolve({ data: [], error: null }),
-        signedIn ? client.from("report_contacts").select("report_id,phone").limit(500) : Promise.resolve({ data: [], error: null }),
-        signedIn ? client.from("claims").select("*").order("created_at", { ascending: false }).limit(500) : Promise.resolve({ data: [], error: null }),
-        signedIn ? client.from("notifications").select("*").order("created_at", { ascending: false }).limit(500) : Promise.resolve({ data: [], error: null }),
-        signedIn ? client.from("moderation_actions").select("*").order("created_at", { ascending: false }).limit(500) : Promise.resolve({ data: [], error: null }),
-        signedIn ? client.rpc("get_notification_summary") : Promise.resolve({ data: { unreadNotifications: 0, unreadClaims: {} }, error: null }),
-        signedIn ? client.from("report_flags").select("*").order("created_at", { ascending: false }).limit(500) : Promise.resolve({ data: [], error: null }),
+      const [page, counts] = await Promise.all([
+        queryPage(routeQuery(path)),
+        signedIn ? client.rpc('get_notification_summary') : Promise.resolve({ data: { unreadNotifications: 0, unreadClaims: {} }, error: null }),
       ]);
       if (version !== sessionVersion.current) return;
-      [profiles, reports, emails, admins, contacts, claims, notifications, activities, counts, flags].forEach(check);
-      const emailById = new Map(rows<EmailRow>(emails.data).map(x => [x.user_id, x.email]));
-      const adminIds = new Set(rows<AdminRow>(admins.data).map(x => x.user_id));
-      const contactById = new Map(rows<ContactRow>(contacts.data).map(x => [x.report_id, x.phone]));
-      const paths = new Map<string, string | null>();
-      const allReports: Report[] = rows<ReportRow>(reports.data).map(r => {
-        paths.set(r.id, r.image_path);
-        const photo = r.image_path ? client.storage.from("report-images").getPublicUrl(r.image_path).data.publicUrl : undefined;
-        return {
-          id: r.id, ownerId: r.owner_id, type: r.type as ReportType, title: r.title,
-          category: r.category as Category, brand: r.brand, color: r.color, location: r.location,
-          occurredOn: r.occurred_on, description: r.description, contactPhone: contactById.get(r.id) || "",
-          image: photo, status: r.status as ReportStatus, linkedReportId: r.linked_report_id || undefined,
-          createdAt: r.created_at, updatedAt: r.updated_at,
-          hidden: Boolean(r.hidden), moderatedAt: r.moderated_at || undefined,
-        };
-      });
-      imagePaths.current = paths;
-      const users: UserProfile[] = rows<ProfileRow>(profiles.data).map(p => ({
-        id: p.id, name: p.display_name,
-        email: emailById.get(p.id) || (p.id === signedIn?.id ? signedIn?.email || "" : ""),
-        role: adminIds.has(p.id) ? "admin" : "student", joinedAt: p.created_at,
-        suspended: Boolean(p.suspended_at),
-      }));
-      const allClaims: Claim[] = rows<ClaimRow>(claims.data).map(c => ({
-        id: c.id, reportId: c.report_id, relatedReportId: c.related_report_id || undefined,
-        claimantId: c.claimant_id, message: c.message, status: c.status as ClaimStatus,
-        createdAt: c.created_at, updatedAt: c.updated_at,
-        reviewedAt: c.reviewed_at || undefined, ownerConfirmedAt: c.owner_confirmed_at || undefined,
-        claimantConfirmedAt: c.claimant_confirmed_at || undefined, completedAt: c.completed_at || undefined,
-        cancelledAt: c.cancelled_at || undefined, disputedAt: c.disputed_at || undefined, issueReason: c.issue_reason || undefined,
-        resolvedAt: c.resolved_at || undefined, resolutionReason: c.resolution_reason || undefined,
-      }));
-      const allNotifications: Notification[] = rows<NoticeRow>(notifications.data).map(n => ({
-        id: n.id, userId: n.user_id, title: n.title, body: n.body, href: n.href,
-        read: Boolean(n.read_at), createdAt: n.created_at, messageId: n.message_id || undefined,
-      }));
-      const activity: Activity[] = rows<ActionRow>(activities.data).map(a => ({
-        id: a.id, actorId: a.admin_id, action: a.action, subject: a.subject, createdAt: a.created_at, reason: a.reason || undefined,
-      }));
-      setUserId(signedIn?.id ?? null);
-      setAuthEmail(signedIn?.email ?? null);
+      check(counts);
+      imagePaths.current = new Map(Object.entries(page.imagePaths || {}));
+      setUserId(signedIn?.id ?? null); setAuthEmail(signedIn?.email ?? null);
       setSummary(counts.data as { unreadNotifications: number; unreadClaims: Record<string, number> });
-      const reportFlags: ReportFlag[] = rows<FlagRow>(flags.data).map((flag) => ({ id: flag.id, reportId: flag.report_id, reporterId: flag.reporter_id, reason: flag.reason, status: flag.status, createdAt: flag.created_at, resolvedAt: flag.resolved_at || undefined, resolvedBy: flag.resolved_by || undefined, resolutionReason: flag.resolution_reason || undefined }));
-      setDB({ users, reports: allReports, claims: allClaims, messages: [], notifications: allNotifications, activity, reportFlags });
-      setSyncError("");
+      setDB(page.db); setDataStats(page.stats); setContextPath(path);
+      setDataRevision((revision) => revision + 1); setSyncError('');
     } catch (error) {
-      if (version === sessionVersion.current) setSyncError(error instanceof Error ? error.message : "Unable to reach Supabase");
-    } finally {
-      if (version === sessionVersion.current) setReady(true);
-    }
-  }, [client]);
+      if (version === sessionVersion.current) { setSyncError(error instanceof Error ? error.message : 'Unable to reach Supabase'); setContextPath(path); }
+    } finally { if (version === sessionVersion.current) setReady(true); }
+  }, [client, queryPage, path]);
   const refreshQueue = useRef<() => Promise<void>>(async () => {});
   const refresh = useCallback(() => refreshQueue.current(), []);
   const invalidateSession = useCallback(() => { sessionVersion.current++; }, []);
@@ -152,6 +101,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
         // Hide the prior account's private snapshot before fetching the next one.
         setDB(empty()); setUserId(null); setAuthEmail(null);
         setSummary({ unreadNotifications: 0, unreadClaims: {} });
+        setDataStats({});
       }
       scheduleRefresh();
     });
@@ -263,7 +213,8 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   }, [client]);
   const notInCloud = () => { throw new Error("Switching and creating demo users is disabled in cloud mode"); };
   const value: AppStore = {
-    ready, db, user: user ? { ...user, email: authEmail || user.email } : null,
+    ready: ready && contextPath === path, db, user: user ? { ...user, email: authEmail || user.email } : null,
+    queryPage, dataRevision, dataStats,
     isAdmin, syncError, ...summary,
     switchUser: notInCloud, registerDemo: notInCloud,
     addReport, editReport, removeReport, requestClaim, updateClaim, sendMessage, confirmHandover, manageClaim,
