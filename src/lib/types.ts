@@ -29,6 +29,8 @@ export type Report = {
   status: ReportStatus;
   ownerId: string;
   linkedReportId?: string;
+  hidden?: boolean;
+  moderatedAt?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -43,4 +45,6 @@ export type Claim = {
 export type Message = { id: string; claimId: string; senderId: string; body: string; createdAt: string };
 export type Notification = { id: string; userId: string; title: string; body: string; href: string; read: boolean; createdAt: string; messageId?: string };
 export type Activity = { id: string; action: string; actorId: string; subject: string; createdAt: string; reason?: string };
-export type DemoDB = { users: UserProfile[]; reports: Report[]; claims: Claim[]; messages: Message[]; notifications: Notification[]; activity: Activity[] };
+export type ReportFlag = { id: string; reportId: string; reporterId: string; reason: string; status: "open" | "dismissed" | "actioned"; createdAt: string; resolvedAt?: string; resolvedBy?: string; resolutionReason?: string };
+export type AdminAnalytics = { totalReports: number; hiddenReports: number; returnedReports: number; recoveredItems: number; totalUsers: number; suspendedUsers: number; pendingClaims: number; disputedClaims: number; openFlags: number; categories: { category: string; count: number }[]; monthly: { month: string; count: number }[] };
+export type DemoDB = { users: UserProfile[]; reports: Report[]; claims: Claim[]; messages: Message[]; notifications: Notification[]; activity: Activity[]; reportFlags?: ReportFlag[] };

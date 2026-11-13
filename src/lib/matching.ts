@@ -136,7 +136,7 @@ export function findMatches(reports: Report[], currentUserId?: string, options: 
   matchWindow(options);
   const unique = new Map<string, Report>();
   for (const report of reports) if (!unique.has(report.id)) unique.set(report.id, report);
-  const available = [...unique.values()].filter((report) => report.status === "open");
+  const available = [...unique.values()].filter((report) => !report.hidden && report.status === "open");
   const foundByCategory = new Map<Report["category"], Report[]>();
   for (const report of available.filter((report) => report.type === "found")) {
     const group = foundByCategory.get(report.category) ?? [];

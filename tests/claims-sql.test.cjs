@@ -39,6 +39,7 @@ before(async () => {
   await db.exec(migration('202611060001_report_management_privacy.sql'));
   await db.exec(migration('202611120001_two_party_handover.sql'));
   await db.exec(migration('202611130001_private_chat_realtime.sql'));
+  await db.exec(migration('202611130002_admin_moderation.sql'));
 });
 beforeEach(async () => {
   await db.exec('reset role; truncate auth.users cascade');
@@ -221,4 +222,104 @@ test('chat SQL: retry delivery is idempotent and enforces sender, body, closed-c
   await manage(id,claimant,'cancel');
   await send(owner); // The previously persisted response may still be safely retried.
   await assert.rejects(send(owner,uid(1002)), /row-level security/);
+});
+
+const moderate = (hidden=true,reason='Reviewed unsafe or misleading report details',user=admin) => as(user,'select public.moderate_report($1,$2,$3)',[found,hidden,reason]);
+const flag = (user=stranger,reason='Misleading details need an administrator review') => as(user,'select public.flag_report($1,$2)',[found,reason]);
+
+test('moderation SQL: hidden reports are private to existing participants, owner and Admin without RLS recursion', async () => {
+  const id=await submit();await as(owner,'select public.send_claim_message($1,$2,$3)',[id,uid(1001),'Please verify the sticker']);
+  await moderate();
+  for(const user of [null,stranger]) assert.equal((await as(user,'select id from public.reports where id=$1',[found])).length,0);
+  for(const user of [owner,claimant,admin]) assert.equal((await as(user,'select id from public.reports where id=$1',[found])).length,1);
+  assert.equal((await as(null,'select public.can_read_hidden_report($1) as allowed',[found]))[0].allowed,false);
+  assert.equal((await as(claimant,'select * from public.get_claim_messages($1)',[id])).length,1);
+  assert.equal((await as(stranger,'select * from public.messages')).length,0);
+  assert.equal((await query('select count(*)::int n from public.claims'))[0].n,1);
+});
+test('moderation SQL: flags validate identity/reason, prevent duplicates, and restrict reporter details', async () => {
+  await assert.rejects(flag(owner),/own report/);await assert.rejects(flag(stranger,'short'),/Reason/);await assert.rejects(flag(null),/permission denied/);
+  await flag();await assert.rejects(flag(),/open flag/);
+  assert.equal((await as(owner,'select * from public.report_flags')).length,0);
+  assert.equal((await as(stranger,'select * from public.report_flags')).length,1);
+  assert.equal((await as(admin,'select * from public.report_flags')).length,1);
+  await assert.rejects(as(stranger,"insert into public.report_flags(report_id,reporter_id,reason) values($1,$2,'Bypass moderation RPC')",[found,stranger]),/permission denied/);
+  await assert.rejects(moderate(true,undefined,stranger),/Admin/);
+  await assert.rejects(moderate(true,'short'),/Reason/);
+});
+test('moderation SQL: hide resolves flags, preserves data, notifies owner and audits both hide and restore', async () => {
+  await submit();await flag();await moderate();
+  const [f]=await query('select * from public.report_flags');assert.equal(f.status,'actioned');assert.equal(f.resolved_by,admin);assert.ok(f.resolution_reason);
+  assert.equal((await query('select count(*)::int n from public.claims'))[0].n,1);
+  assert.equal((await as(owner,"select * from public.notifications where title='Report hidden'")).length,1);
+  assert.equal((await as(stranger,"select * from public.notifications where title='Report flag reviewed'")).length,1);
+  await moderate();assert.equal((await query('select * from public.moderation_actions')).length,1);
+  await moderate(false,'Report corrected and safe to display publicly');
+  assert.equal((await as(null,'select id from public.reports where id=$1',[found])).length,1);
+  assert.deepEqual((await query('select action from public.moderation_actions order by created_at')).map(r=>r.action),['Report hidden','Report restored']);
+  assert.ok((await query('select reason from public.moderation_actions')).every(r=>r.reason.length>=10));
+});
+test('moderation SQL: dismissal and suspension require reasons, block legacy bypass and self-suspension', async () => {
+  await flag();const [{id}]=await query('select id from public.report_flags');
+  await assert.rejects(as(stranger,'select public.dismiss_report_flag($1,$2)',[id,'This flag was reviewed in detail']),/Admin/);
+  await assert.rejects(as(admin,'select public.dismiss_report_flag($1,$2)',[id,'short']),/Reason/);
+  await as(admin,'select public.dismiss_report_flag($1,$2)',[id,'The original report is accurate and safe']);
+  assert.equal((await query('select status from public.report_flags'))[0].status,'dismissed');
+  await assert.rejects(as(admin,'select public.set_member_suspended($1,true)',[stranger]),/reason/);
+  await assert.rejects(as(admin,'select public.set_member_suspended($1,true,$2)',[admin,'Attempt to suspend own account']),/yourself/);
+  await as(admin,'select public.set_member_suspended($1,true,$2)',[stranger,'Repeatedly submitted misleading ownership claims']);
+  await assert.rejects(flag(),/active/);
+  await as(admin,'select public.set_member_suspended($1,false,$2)',[stranger,'Reviewed the appeal and restored access']);
+  assert.equal((await query('select suspended_at from public.profiles where id=$1',[stranger]))[0].suspended_at,null);
+  assert.equal((await query('select count(*)::int n from public.moderation_actions where reason is not null'))[0].n,3);
+});
+test('moderation SQL: hidden target/linked reports block new claims and confirmations while private chat remains usable', async () => {
+  const id=await submit();await moderate();
+  await assert.rejects(submit(stranger,null),/hidden/);
+  await assert.rejects(review(id),/hidden/);
+  await moderate(false,'Report corrected and verified by administrator');
+  await review(id);await moderate();
+  await assert.rejects(confirm(id,owner),/hidden/);
+  await as(owner,'select public.send_claim_message($1,$2,$3)',[id,uid(1001),'Admin is reviewing this report']);
+  await moderate(false,'Report corrected and verified by administrator');
+  await confirm(id,owner);
+  await as(admin,'select public.moderate_report($1,true,$2)',[lost,'The linked report also needs review']);
+  await assert.rejects(confirm(id,claimant),/hidden/);
+  await as(admin,'select public.moderate_report($1,false,$2)',[lost,'Linked report verified and restored']);
+  await confirm(id,claimant);assert.equal((await query('select status from public.claims where id=$1',[id]))[0].status,'completed');
+});
+test('moderation SQL: delete and direct-write guards prevent destructive admin moderation and review bypass', async () => {
+  await assert.rejects(as(admin,'select public.delete_report($1)',[found]),/hide\/restore/);
+  await flag();await assert.rejects(as(owner,'select public.delete_report($1)',[found]),/flagged/);
+  await moderate();await assert.rejects(as(owner,'select public.delete_report($1)',[found]),/moderated/);
+  await assert.rejects(as(owner,'update public.reports set hidden=false where id=$1',[found]),/permission denied/);
+  await assert.rejects(as(owner,'select public.guard_moderated_report_claim()'),/permission denied/);
+});
+test('moderation SQL: full-database analytics include 500+ rows and enforce Admin and UTC date boundaries', async () => {
+  await db.query("update public.reports set created_at='2026-01-31T23:59:59.999999Z'");
+  await db.query("insert into public.reports(owner_id,type,title,category,location,occurred_on,description,created_at) select $1,'found','Phone','Phone','Campus Library',current_date,'An ordinary transparent phone case','2026-02-01T00:00:00Z' from generate_series(1,505)",[owner]);
+  let [r]=await as(admin,'select public.get_admin_analytics(null,$1) as value',['2026-02-28']);
+  assert.equal(r.value.totalReports,507);assert.equal(r.value.categories.find(c=>c.category==='Phone').count,507);
+  assert.deepEqual(r.value.monthly.slice(-2),[{month:'2026-01',count:2},{month:'2026-02',count:505}]);
+  [r]=await as(admin,'select public.get_admin_analytics($1,$2) as value',['2026-02-01','2026-02-28']);assert.equal(r.value.totalReports,505);
+  await assert.rejects(as(stranger,'select public.get_admin_analytics()'),/Admin/);await assert.rejects(as(null,'select public.get_admin_analytics()'),/permission denied/);
+  await assert.rejects(as(admin,'select public.get_admin_analytics($1,$2)',['2026-02-28','2026-01-01']),/From date/);
+});
+
+test('moderation SQL: Admin edits require an audited reason through both RPC signatures; owners retain normal editing',async()=>{
+  const legacy="select public.edit_report($1,'found','Verified phone','Phone','','','Campus Library',current_date,'Verified blue sticker on phone case','01712345678',null)";
+  const audited="select public.edit_report($1,'found','Verified phone','Phone','','','Campus Library',current_date,'Verified blue sticker on phone case','01712345678',null,$2)";
+  await assert.rejects(as(admin,legacy,[found]),/Admin edit reason/);
+  await assert.rejects(as(stranger,audited,[found,'Corrected an unsafe public description']),/Not authorized/);
+  await as(admin,audited,[found,'Corrected an unsafe public description']);
+  assert.equal((await query('select reason from public.moderation_actions'))[0].reason,'Corrected an unsafe public description');
+  await as(owner,legacy,[found]);
+  await assert.rejects(as(admin,legacy.replace('edit_report(','edit_report_before_moderation('),[found]),/permission denied/);
+});
+test('moderation SQL: recovery analytics deduplicate linked reports and retain hidden historical records',async()=>{
+  const id=await submit();await review(id);await confirm(id,owner);await confirm(id,claimant);await moderate();
+  await db.query("update public.reports set created_at=case when id=$1 then '2026-01-01T00:00:00Z'::timestamptz else '2026-02-01T00:00:00Z'::timestamptz end",[found]);
+  let [r]=await as(admin,'select public.get_admin_analytics(null,$1) as value',['2026-02-28']);
+  assert.equal(r.value.recoveredItems,1);assert.equal(r.value.returnedReports,2);assert.equal(r.value.hiddenReports,1);
+  [r]=await as(admin,'select public.get_admin_analytics($1,$2) as value',['2026-02-01','2026-02-28']);assert.equal(r.value.recoveredItems,1);assert.equal(r.value.totalReports,1);
 });

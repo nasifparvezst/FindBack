@@ -25,12 +25,15 @@ Open **SQL Editor > New query**. Open each SQL file from the project and run its
 2. `supabase/migrations/202611060001_report_management_privacy.sql`
 3. `supabase/migrations/202611120001_two_party_handover.sql`
 4. `supabase/migrations/202611130001_private_chat_realtime.sql`
+5. `supabase/migrations/202611130002_admin_moderation.sql`
 
 Run only migrations not yet applied. The first creates the schema/security and Storage bucket; the second blocks public ID-card photos. The third adds two-party handover, cancel/dispute states and audited Admin resolution, preserves existing data and disables the legacy completion endpoint. Review the third migration before running it: pre-existing overlapping approved claims must be resolved first; existing approved claims will need both parties' new confirmations. No live migration has been applied by this development task.
 
 In **Database > Tables**, confirm these tables exist: `profiles`, `profile_emails`, `admin_members`, `reports`, `report_contacts`, `claims`, `messages`, `notifications`, and `moderation_actions`.
 
 The fourth migration preserves existing messages/notifications and enables the `messages`, `claims` and `notifications` tables in the `supabase_realtime` publication. Run it as the database owner using SQL Editor; it does not change participant/recipient RLS. Confirm these tables are enabled for Realtime in the Dashboard. See [Supabase Postgres Changes](https://supabase.com/docs/guides/realtime/postgres-changes) for publication and RLS behavior. Apply migrations once in filename order, then refresh the app. No live migration was applied during development.
+
+The fifth migration adds `report_flags`, report hide/restore and Admin analytics. It preserves report/claim/message data, limits hidden report visibility, blocks new claims/handover on hidden reports, and requires reasons for moderation, suspension and Admin edits. Old Admin clients must refresh to use the required reason fields. Existing owners can still edit their reports. Review this migration and apply it once after the first four; no live migration was applied during development.
 
 ## 4. Enable email confirmation
 
@@ -103,6 +106,8 @@ Sign out and back in. Do not put this query or a service-role key in browser cod
 7. Test admin access, suspended users, email confirmation and password recovery.
 8. Open the same claim on two devices. Send messages both ways and verify live arrival, notification badge and claim unread count without reloading. An unrelated third account must not see either messages or private alerts. Send as Admin and verify both participants receive alerts.
 9. Load more than 50 messages and check older pages. Disconnect one browser, send more than 50 messages from the other, reconnect, and verify every missed message appears once. Retry after a lost send response and verify no duplicate message/alert. Opening the thread at its newest message must read only that user's message alerts, preserving workflow alerts and later messages. Switch accounts/sign out and verify prior private content disappears and subscriptions close.
+10. Flag a report as a third student. Confirm only the reporter and Admin can read the flag. Hide it as Admin with a reason; verify public Browse/direct-link access is denied, original claim participants retain chat access, new claims/confirmations are blocked, and data is preserved. Restore it and verify claims can continue. Test flag dismissal, owner/reporter alerts, suspension/restoration and Admin edit reasons in the audit log.
+11. Check date/status/category/type/visibility filters, table pagination and filtered CSV. Verify formula-like item titles export as text and contact numbers are excluded. Compare full-database analytics against database totals, including more than 500 rows and linked recoveries. Lists and CSV still cover only the loaded 500-record snapshots.
 
 ## Notes
 

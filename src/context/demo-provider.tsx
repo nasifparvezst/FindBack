@@ -7,6 +7,7 @@ import { activeClaim, applyClaimAction, canMessageClaim, reservedClaim } from "@
 import type { Activity, Claim, ClaimStatus, DemoDB, Message, Notification, Report, ReportDraft, UserProfile } from "@/lib/types";
 import { validEmail, validateReport } from "@/lib/validation";
 import { compareMessages, notificationSummary, type MessageCursor } from "@/lib/chat";
+import { addReportFlag, applyModeration, buildAdminAnalytics, moderationReason } from "@/lib/moderation";
 import { Context, DEMO_MODE } from "@/context/app-store";
 
 const DB_KEY = "findback_v2_demo_data";
@@ -64,27 +65,30 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     const id = newId();
     const report: Report = { ...draft, id, ownerId: current.id, status: "open", createdAt: now(), updatedAt: now() };
     setDB((d) => {
-      const matches = d.reports.filter((r) => r.type !== report.type && r.status === "open" && r.ownerId !== current.id).map((r) => ({ r, match: calculateMatchScore(report, r) })).filter((x) => x.match.score >= 65).slice(0, 6);
+      const matches = d.reports.filter((r) => !r.hidden && r.type !== report.type && r.status === "open" && r.ownerId !== current.id).map((r) => ({ r, match: calculateMatchScore(report, r) })).filter((x) => x.match.score >= 65).slice(0, 6);
       return { ...d, reports: [report, ...d.reports], activity: [action(current.id, "Report created", report.title), ...d.activity], notifications: [...d.notifications, ...matches.map(({ r }) => notice(r.ownerId, "New potential match", `A new report for ${report.title} might match your item.`, "/matches"))] };
     });
     return id;
   };
 
-  const editReport = (id: string, draft: ReportDraft) => {
+  const editReport = (id: string, draft: ReportDraft, reason = "") => {
     const existing = db.reports.find((r) => r.id === id);
     if (!existing) throw new Error("Report not found.");
     const current = isOwnerOrAdmin(existing.ownerId);
+    const auditReason = current.role === "admin" && current.id !== existing.ownerId ? moderationReason(reason) : undefined;
     if (existing.status !== "open") throw new Error("Returned reports cannot be edited.");
     if ((draft.type !== existing.type || draft.category !== existing.category) && db.claims.some((claim) => activeClaim(claim) && [claim.reportId, claim.relatedReportId].includes(id))) throw new Error("Resolve active claims before changing report type or category.");
     const errors = validateReport(draft);
     if (errors.length) throw new Error(errors[0]);
-    setDB((d) => ({ ...d, reports: d.reports.map((r) => r.id === id ? { ...r, ...draft, updatedAt: now() } : r), activity: [action(current.id, "Report updated", existing.title), ...d.activity] }));
+    setDB((d) => ({ ...d, reports: d.reports.map((r) => r.id === id ? { ...r, ...draft, updatedAt: now() } : r), activity: [{ ...action(current.id, "Report updated", `${existing.title} (${id})`), reason: auditReason }, ...d.activity] }));
   };
 
   const removeReport = (id: string) => {
     const report = db.reports.find((r) => r.id === id);
     if (!report) throw new Error("Report not found.");
     const current = isOwnerOrAdmin(report.ownerId);
+    if (current.role === "admin" && current.id !== report.ownerId) throw new Error("Use hide/restore to moderate another member's report.");
+    if (report.hidden || (db.reportFlags || []).some((flag) => flag.reportId === id && flag.status === "open")) throw new Error("A moderated or flagged report cannot be deleted. Contact Admin.");
     if (db.claims.some((claim) => reservedClaim(claim) && [claim.reportId, claim.relatedReportId].includes(id))) throw new Error("Resolve the approved or disputed claim before deleting this report.");
     const claimIds = new Set(db.claims.filter((c) => c.reportId === id).map((c) => c.id));
     setDB((d) => ({ ...d, reports: d.reports.filter((r) => r.id !== id).map((r) => r.linkedReportId === id ? { ...r, linkedReportId: undefined } : r), claims: d.claims.filter((c) => c.reportId !== id).map((c) => c.relatedReportId === id ? { ...c, relatedReportId: undefined } : c), messages: d.messages.filter((m) => !claimIds.has(m.claimId)), activity: [action(current.id, "Report deleted", report.title), ...d.activity] }));
@@ -92,12 +96,12 @@ export function DemoProvider({ children }: { children: ReactNode }) {
 
   const requestClaim = (reportId: string, message: string, relatedReportId?: string) => {
     const current = mustLogin(); const report = db.reports.find((r) => r.id === reportId);
-    if (!report || report.status !== "open") throw new Error("This report is no longer available for claims.");
+    if (!report || report.hidden || report.status !== "open") throw new Error("This report is no longer available for claims.");
     if (report.ownerId === current.id) throw new Error("You cannot claim your own report.");
     if (message.trim().length < 12 || message.trim().length > 2000) throw new Error("Provide 12 to 2000 characters of non-sensitive identifying details.");
     if (relatedReportId) {
       const related = db.reports.find((r) => r.id === relatedReportId);
-      if (!related || related.ownerId !== current.id || related.type === report.type || related.category !== report.category || related.status !== "open") throw new Error("Select your own open, opposite-type report in the same category.");
+      if (!related || related.hidden || related.ownerId !== current.id || related.type === report.type || related.category !== report.category || related.status !== "open") throw new Error("Select your own visible, open, opposite-type report in the same category.");
     }
     if (db.claims.some((c) => c.reportId === reportId && c.claimantId === current.id && activeClaim(c))) throw new Error("You already have an active claim for this report.");
     if (db.claims.some((c) => reservedClaim(c) && [c.reportId, c.relatedReportId].some((id) => id === reportId || Boolean(relatedReportId && id === relatedReportId)))) throw new Error("A selected report is reserved by another claim.");
@@ -143,14 +147,16 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     }) }));
   }, [user]);
 
-  const suspendUser = (id: string, suspended: boolean) => {
-    const current = mustLogin(); if (current.role !== "admin") throw new Error("Admin access required.");
-    if (id === current.id) throw new Error("You cannot suspend yourself.");
-    const subject = db.users.find((u) => u.id === id)?.name || id;
-    setDB((d) => ({ ...d, users: d.users.map((u) => u.id === id ? { ...u, suspended } : u), activity: [action(current.id, suspended ? "User suspended" : "User restored", subject), ...d.activity] }));
-  };
+  const suspendUser = (id: string, suspended: boolean, reason: string) => { const current = mustLogin(); setDB(applyModeration(db, current.id, { type: "suspend", id, suspended, reason }, now())); };
+  const moderateReport = (id: string, hidden: boolean, reason: string) => { const current = mustLogin(); setDB(applyModeration(db, current.id, { type: "visibility", id, hidden, reason }, now())); };
+  const dismissReportFlag = (id: string, reason: string) => { const current = mustLogin(); setDB(applyModeration(db, current.id, { type: "dismiss", id, reason }, now())); };
+  const flagReport = (id: string, reason: string) => { const current = mustLogin(); setDB(addReportFlag(db, current.id, id, reason, newId(), now())); };
+  const getAdminAnalytics = useCallback((from?: string, to?: string) => {
+    if (!user || user.role !== "admin") throw new Error("Admin access required.");
+    return buildAdminAnalytics(db, from, to);
+  }, [db, user]);
 
   const resetDemo = () => { setDB(createDemoDB()); setUserId(demoUsers[0].id); };
-  return <Context.Provider value={{ ready, db, user, isAdmin, ...notificationSummary(db.notifications, user?.id), switchUser, registerDemo, addReport, editReport, removeReport, requestClaim, updateClaim, sendMessage, confirmHandover, manageClaim, markNotificationRead, markAllRead, markClaimMessagesRead, suspendUser, resetDemo }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ ready, db, user, isAdmin, ...notificationSummary(db.notifications, user?.id), switchUser, registerDemo, addReport, editReport, removeReport, requestClaim, updateClaim, sendMessage, confirmHandover, manageClaim, markNotificationRead, markAllRead, markClaimMessagesRead, suspendUser, flagReport, moderateReport, dismissReportFlag, getAdminAnalytics, resetDemo }}>{children}</Context.Provider>;
 }
 

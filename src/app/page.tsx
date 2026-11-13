@@ -10,10 +10,10 @@ function Stat({ icon: Icon, label, value, tint }: { icon: LucideIcon; label: str
 
 export default function Home() {
   const { db } = useApp();
-  const reports = [...db.reports].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const reports = db.reports.filter((report) => !report.hidden).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const activeLost = reports.filter((r) => r.type === "lost" && r.status === "open").length;
   const activeFound = reports.filter((r) => r.type === "found" && r.status === "open").length;
-  const returned = countRecoveredItems(db.reports, db.claims);
+  const returned = countRecoveredItems(reports, db.claims);
   return <>
     <section className="hero-section"><div className="container hero-grid">
       <div className="hero-copy"><span className="eyebrow">Your campus, connected</span><h1>Every lost item deserves a <em>way back.</em></h1><p>Lost something on campus? Found something that belongs to someone else? FindBack makes it simple to report, reconnect, and reunite.</p><div className="hero-actions"><Link href="/report/lost" className="btn btn-primary"><Plus size={17}/> Report a Lost Item</Link><Link href="/report/found" className="btn btn-light"><PackageCheck size={17}/> I Found Something</Link></div><div className="hero-trust"><ShieldCheck size={17}/> Designed for a safer, more connected campus community</div></div>

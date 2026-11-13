@@ -60,6 +60,8 @@ export function ReportForm({ type, existing }: { type: ReportType; existing?: Re
   } : blank(type));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [moderationReason, setModerationReason] = useState("");
+  const adminEditing = user?.role === "admin" && existing && existing.ownerId !== user.id;
   const [fileName, setFileName] = useState(existing?.image && existing.category !== "ID Card" ? "Current photo" : "");
   const set = <K extends keyof ReportDraft>(key: K, value: ReportDraft[K]) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -95,7 +97,7 @@ export function ReportForm({ type, existing }: { type: ReportType; existing?: Re
     setBusy(true);
     try {
       if (existing) {
-        await editReport(existing.id, form);
+        await editReport(existing.id, form, moderationReason);
         router.push(`/item/${existing.id}`);
       } else {
         const id = await addReport(form);
@@ -222,6 +224,7 @@ export function ReportForm({ type, existing }: { type: ReportType; existing?: Re
                 <small style={{ fontSize: 11, color: "#839891" }}>Kept private. Contact is arranged through claims and chat.</small>
               </div>
             </div>
+            {adminEditing && <div className="field"><label htmlFor="edit-moderation-reason">Admin edit reason (10–1000 characters)</label><textarea id="edit-moderation-reason" required minLength={10} maxLength={1000} value={moderationReason} onChange={(event) => setModerationReason(event.target.value)} /><small>This reason is recorded in the moderation audit log.</small></div>}
             <div className="form-actions">
               <Link href="/browse" className="btn btn-light">Cancel</Link>
               <button className="btn btn-primary" disabled={busy || !user} type="submit">

@@ -23,7 +23,7 @@ export default function Browse() {
   const reports = useMemo(() => [...db.reports].filter((report) => {
     const terms = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
     const haystack = `${report.title} ${report.brand} ${report.color} ${report.description} ${report.location} ${report.category}`.toLocaleLowerCase();
-    return terms.every((term) => haystack.includes(term)) &&
+    return !report.hidden && terms.every((term) => haystack.includes(term)) &&
       (category === "all" || report.category === category) &&
       (type === "all" || report.type === type) &&
       (status === "all" || report.status === status) &&

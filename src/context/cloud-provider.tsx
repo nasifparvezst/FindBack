@@ -6,7 +6,8 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { validateReport } from "@/lib/validation";
 import { createRefreshQueue, type MessageCursor } from "@/lib/chat";
 import { watchPrivateUpdates } from "@/lib/realtime";
-import type { Activity, Category, Claim, ClaimStatus, DemoDB, Notification, Report, ReportDraft, ReportStatus, ReportType, UserProfile } from "@/lib/types";
+import { moderationReason, validateAdminDates } from "@/lib/moderation";
+import type { Activity, AdminAnalytics, Category, Claim, ClaimStatus, DemoDB, Notification, Report, ReportDraft, ReportFlag, ReportStatus, ReportType, UserProfile } from "@/lib/types";
 
 type ProfileRow = { id: string; display_name: string; created_at: string; suspended_at: string | null };
 type EmailRow = { user_id: string; email: string };
@@ -16,12 +17,14 @@ type ReportRow = {
   color: string; location: string; occurred_on: string; description: string;
   image_path: string | null; status: string; linked_report_id: string | null;
   created_at: string; updated_at: string;
+  hidden?: boolean; moderated_at?: string;
 };
 type ContactRow = { report_id: string; phone: string };
 type ClaimRow = { id: string; report_id: string; related_report_id: string | null; claimant_id: string; message: string; status: string; created_at: string; updated_at: string;
   reviewed_at?: string; owner_confirmed_at?: string; claimant_confirmed_at?: string; completed_at?: string; cancelled_at?: string; disputed_at?: string; issue_reason?: string; resolved_at?: string; resolution_reason?: string };
 type NoticeRow = { id: string; user_id: string; title: string; body: string; href: string; read_at: string | null; created_at: string; message_id?: string };
 type ActionRow = { id: string; admin_id: string; action: string; subject: string; created_at: string; reason?: string };
+type FlagRow = { id: string; report_id: string; reporter_id: string; reason: string; status: ReportFlag["status"]; created_at: string; resolved_at?: string; resolved_by?: string; resolution_reason?: string };
 
 function rows<T>(data: unknown): T[] { return Array.isArray(data) ? data as T[] : []; }
 function empty(): DemoDB { return { users: [], reports: [], claims: [], messages: [], notifications: [], activity: [] }; }
@@ -63,7 +66,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
       const { data: auth, error: authError } = await client.auth.getUser();
       if (authError && authError.name !== "AuthSessionMissingError") throw authError;
       const signedIn = auth?.user || null;
-      const [profiles, reports, emails, admins, contacts, claims, notifications, activities, counts] = await Promise.all([
+      const [profiles, reports, emails, admins, contacts, claims, notifications, activities, counts, flags] = await Promise.all([
         client.from("profiles").select(signedIn ? "id,display_name,created_at,suspended_at" : "id,display_name,created_at").limit(500),
         client.from("reports").select("*").order("created_at", { ascending: false }).limit(500),
         signedIn ? client.from("profile_emails").select("user_id,email").limit(500) : Promise.resolve({ data: [], error: null }),
@@ -73,9 +76,10 @@ export function CloudProvider({ children }: { children: ReactNode }) {
         signedIn ? client.from("notifications").select("*").order("created_at", { ascending: false }).limit(500) : Promise.resolve({ data: [], error: null }),
         signedIn ? client.from("moderation_actions").select("*").order("created_at", { ascending: false }).limit(500) : Promise.resolve({ data: [], error: null }),
         signedIn ? client.rpc("get_notification_summary") : Promise.resolve({ data: { unreadNotifications: 0, unreadClaims: {} }, error: null }),
+        signedIn ? client.from("report_flags").select("*").order("created_at", { ascending: false }).limit(500) : Promise.resolve({ data: [], error: null }),
       ]);
       if (version !== sessionVersion.current) return;
-      [profiles, reports, emails, admins, contacts, claims, notifications, activities, counts].forEach(check);
+      [profiles, reports, emails, admins, contacts, claims, notifications, activities, counts, flags].forEach(check);
       const emailById = new Map(rows<EmailRow>(emails.data).map(x => [x.user_id, x.email]));
       const adminIds = new Set(rows<AdminRow>(admins.data).map(x => x.user_id));
       const contactById = new Map(rows<ContactRow>(contacts.data).map(x => [x.report_id, x.phone]));
@@ -89,6 +93,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
           occurredOn: r.occurred_on, description: r.description, contactPhone: contactById.get(r.id) || "",
           image: photo, status: r.status as ReportStatus, linkedReportId: r.linked_report_id || undefined,
           createdAt: r.created_at, updatedAt: r.updated_at,
+          hidden: Boolean(r.hidden), moderatedAt: r.moderated_at || undefined,
         };
       });
       imagePaths.current = paths;
@@ -117,7 +122,8 @@ export function CloudProvider({ children }: { children: ReactNode }) {
       setUserId(signedIn?.id ?? null);
       setAuthEmail(signedIn?.email ?? null);
       setSummary(counts.data as { unreadNotifications: number; unreadClaims: Record<string, number> });
-      setDB({ users, reports: allReports, claims: allClaims, messages: [], notifications: allNotifications, activity });
+      const reportFlags: ReportFlag[] = rows<FlagRow>(flags.data).map((flag) => ({ id: flag.id, reportId: flag.report_id, reporterId: flag.reporter_id, reason: flag.reason, status: flag.status, createdAt: flag.created_at, resolvedAt: flag.resolved_at || undefined, resolvedBy: flag.resolved_by || undefined, resolutionReason: flag.resolution_reason || undefined }));
+      setDB({ users, reports: allReports, claims: allClaims, messages: [], notifications: allNotifications, activity, reportFlags });
       setSyncError("");
     } catch (error) {
       if (version === sessionVersion.current) setSyncError(error instanceof Error ? error.message : "Unable to reach Supabase");
@@ -179,16 +185,17 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     check(result); await refresh();
     return result.data as string;
   };
-  const editReport = async (id: string, draft: ReportDraft): Promise<void> => {
+  const editReport = async (id: string, draft: ReportDraft, reason = ""): Promise<void> => {
     const actor = requireUser(); const errors = validateReport(draft);
     if (errors.length) throw new Error(errors[0]);
     const current = db.reports.find(r => r.id === id);
     if (!current) throw new Error("Report not found");
     if (current.ownerId !== actor.id && !isAdmin) throw new Error("Not authorized");
+    const auditReason = current.ownerId !== actor.id ? moderationReason(reason) : null;
     const oldPath = imagePaths.current.get(id) || null;
     const uploaded = draft.image?.startsWith("data:image/") ? await storePhoto(client, actor.id, draft.image) : null;
     const path = uploaded || (draft.image === current.image ? oldPath : null);
-    const result = await client.rpc("edit_report", { p_id: id, ...makeParams(draft, path) });
+    const result = await client.rpc("edit_report", { p_id: id, ...makeParams(draft, path), p_reason: auditReason });
     if (result.error && uploaded) await client.storage.from("report-images").remove([uploaded]);
     check(result);
     // Remove replaced or cleared photos only after the database update succeeds.
@@ -242,17 +249,25 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     check(await client.rpc("mark_claim_messages_read", { p_claim_id: claimId, p_through_created_at: through.createdAt, p_through_id: through.id }));
     await refresh();
   }, [client, refresh]);
-  const suspendUser = async (id: string, suspended: boolean): Promise<void> => {
+  const suspendUser = async (id: string, suspended: boolean, reason: string): Promise<void> => {
     if (!isAdmin) throw new Error("Admin permissions required");
-    check(await client.rpc("set_member_suspended", { p_user_id: id, p_suspended: suspended })); await refresh();
+    check(await client.rpc("set_member_suspended", { p_user_id: id, p_suspended: suspended, p_reason: moderationReason(reason) })); await refresh();
   };
+  const flagReport = async (id: string, reason: string) => { requireUser(); check(await client.rpc("flag_report", { p_report_id: id, p_reason: moderationReason(reason) })); await refresh(); };
+  const moderateReport = async (id: string, hidden: boolean, reason: string) => { requireUser(); check(await client.rpc("moderate_report", { p_report_id: id, p_hidden: hidden, p_reason: moderationReason(reason) })); await refresh(); };
+  const dismissReportFlag = async (id: string, reason: string) => { requireUser(); check(await client.rpc("dismiss_report_flag", { p_flag_id: id, p_reason: moderationReason(reason) })); await refresh(); };
+  const getAdminAnalytics = useCallback(async (from?: string, to?: string): Promise<AdminAnalytics> => {
+    validateAdminDates(from, to);
+    const result = await client.rpc("get_admin_analytics", { p_from: from || null, p_to: to || null });
+    check(result); return result.data as AdminAnalytics;
+  }, [client]);
   const notInCloud = () => { throw new Error("Switching and creating demo users is disabled in cloud mode"); };
   const value: AppStore = {
     ready, db, user: user ? { ...user, email: authEmail || user.email } : null,
     isAdmin, syncError, ...summary,
     switchUser: notInCloud, registerDemo: notInCloud,
     addReport, editReport, removeReport, requestClaim, updateClaim, sendMessage, confirmHandover, manageClaim,
-    markNotificationRead, markAllRead, markClaimMessagesRead, suspendUser, resetDemo: notInCloud,
+    markNotificationRead, markAllRead, markClaimMessagesRead, suspendUser, flagReport, moderateReport, dismissReportFlag, getAdminAnalytics, resetDemo: notInCloud,
   };
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

@@ -26,10 +26,11 @@ export function applyClaimAction(db: DemoDB, actorId: string, claimId: string, a
   }
   const ids = new Set(reportIds(claim));
   const checkAvailable = () => {
+    if (report.hidden) throw new Error("A report is hidden. Admin must restore it before handover continues.");
     if (report.status !== "open") throw new Error("The report is no longer open.");
     if (claim.relatedReportId) {
       const related = db.reports.find((entry) => entry.id === claim.relatedReportId);
-      if (!related || related.status !== "open" || related.ownerId !== claim.claimantId || related.type === report.type || related.category !== report.category) {
+      if (!related || related.hidden || related.status !== "open" || related.ownerId !== claim.claimantId || related.type === report.type || related.category !== report.category) {
         throw new Error("The linked report is no longer compatible or available.");
       }
     }

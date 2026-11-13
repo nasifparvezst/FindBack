@@ -27,6 +27,7 @@ export default function ClaimRoom() {
   const claimant = db.users.find((entry) => entry.id === claim.claimantId);
   const isOwner = user.id === report.ownerId;
   const participant = isOwner || user.id === claim.claimantId;
+  const moderationPaused = db.reports.some((entry) => entry.hidden && [claim.reportId, claim.relatedReportId].includes(entry.id));
   const confirmed = isOwner ? claim.ownerConfirmedAt : claim.claimantConfirmedAt;
   // A Lost report owner receives the item; a Found report owner hands it over.
   const ownerAction = report.type === "found" ? "I handed over the item" : "I received the item";
@@ -63,6 +64,7 @@ export default function ClaimRoom() {
       <PageHeading eyebrow="Ownership verification" title={`Claim: ${report.title}`} description={`Opened ${formatDate(claim.createdAt)}. Verify ownership privately, then both parties confirm the physical handover.`} aside={<StatusTag status={claim.status} />} />
       {error && <div className="form-error" role="alert">{error}</div>}
       {success && <div className="info-note" role="status">{success}</div>}
+      {moderationPaused && <InfoNote>A report in this claim is hidden by Admin. Approval and handover are paused until restored; private chat and dispute resolution remain available.</InfoNote>}
       <div className="chat-layout">
         <ClaimChat claim={claim} userId={user.id} />
         <aside className="panel claim-summary">
@@ -82,7 +84,7 @@ export default function ClaimRoom() {
           {claim.issueReason && <p><strong>Issue:</strong> {claim.issueReason}</p>}
           {claim.cancelledAt && <p><strong>Cancelled:</strong> {new Date(claim.cancelledAt).toLocaleString()}</p>}
           {claim.resolutionReason && <p><strong>Admin resolution:</strong> {claim.resolutionReason}</p>}
-          {canReview && <div className="claim-controls"><InfoNote>Only approve after checking non-sensitive identifying details.</InfoNote><button disabled={busy} className="btn btn-primary btn-wide" onClick={() => review("approved")}><Check size={16} /> Approve claim</button><button disabled={busy} className="btn btn-danger btn-wide" onClick={() => review("rejected")}><X size={16} /> Reject claim</button></div>}
+          {canReview && <div className="claim-controls"><InfoNote>Only approve after checking non-sensitive identifying details.</InfoNote><button disabled={busy || moderationPaused} className="btn btn-primary btn-wide" onClick={() => review("approved")}><Check size={16} /> Approve claim</button><button disabled={busy} className="btn btn-danger btn-wide" onClick={() => review("rejected")}><X size={16} /> Reject claim</button></div>}
           {claim.status === "approved" && <div className="claim-controls"><InfoNote>Both parties must confirm. One confirmation alone keeps the item Open.</InfoNote>{participant ? confirmed ? <p role="status">Your confirmation is recorded. Waiting for the other person.</p> : <button disabled={busy} className="btn btn-primary btn-wide" onClick={() => { if (window.confirm(`${ownAction}. Confirm only after the physical handover?`)) void run(() => confirmHandover(claim.id), "Your confirmation was saved. Both confirmations are required for completion."); }}>{ownAction}</button> : <p>Only the owner and claimant can confirm; Admin cannot confirm on their behalf.</p>}</div>}
           {claim.status === "disputed" && <InfoNote>Handover is paused while an Admin reviews the dispute. You can continue the private conversation.</InfoNote>}
           {(canCancel || (participant && claim.status === "approved")) && <div className="claim-controls">{canCancel && <button disabled={busy} className="btn btn-outline btn-sm" onClick={() => { setIssue("cancel"); setReason(""); }}>Cancel claim</button>}{participant && claim.status === "approved" && <button disabled={busy} className="btn btn-outline btn-sm" onClick={() => { setIssue("dispute"); setReason(""); }}>Raise a dispute</button>}</div>}

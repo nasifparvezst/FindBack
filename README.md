@@ -2,7 +2,7 @@
 
 A Next.js 16 + React 19 + TypeScript campus lost-and-found application. Step 3 improves report creation and editing, duplicate warnings, browsing, My Reports management, image privacy and storage cleanup.
 
-> **Release status:** The Step 3 baseline includes Phase 1 Smart Matching, Phase 2 two-party handover and Phase 3 private realtime chat/notifications. Phase 3 passed 15 targeted logic/SQL tests and Demo browser checks; live Supabase Realtime, email and concurrent multi-device testing remain required before deployment. A full build/suite is deferred to the requested final audit.
+> **Release status:** The Step 3 baseline includes Phases 1–4: Smart Matching, two-party handover, private realtime chat/notifications, and Admin moderation/analytics. Phase 4 passed 16 targeted Demo/SQL tests, TypeScript, changed-file lint and browser workflow checks. Live Supabase, email and concurrent multi-device testing remain required before deployment. A full build/suite is deferred to the requested final audit.
 
 ## Requirements
 
@@ -37,6 +37,7 @@ Read `docs/STEP2_SETUP.md`. In summary:
    - `supabase/migrations/202611060001_report_management_privacy.sql`
    - `supabase/migrations/202611120001_two_party_handover.sql`
    - `supabase/migrations/202611130001_private_chat_realtime.sql`
+   - `supabase/migrations/202611130002_admin_moderation.sql`
 3. Configure the email confirmation and password recovery templates/redirect URLs.
 4. Copy the Supabase Project URL and publishable key into `.env.local`.
 5. Set `NEXT_PUBLIC_DEMO_MODE=false` and restart the dev server.
@@ -76,6 +77,7 @@ npm run lint
 npm test
 npm run test:claims
 npm run test:chat
+npm run test:admin
 npm run build
 ```
 
@@ -98,6 +100,14 @@ Cloud mode subscribes to authorized claim changes, the signed-in recipient's not
 The header and claim list show unread counts. Opening a visible conversation at its newest messages reads message alerts through the displayed cursor; claim-status alerts and later arrivals remain unread. Admin messages notify both participants. Notification lists show 20 entries at a time from the existing latest-500 snapshot; unread totals include all records. Scaling the remaining report/claim/notification snapshots is a later phase.
 
 Apply the fourth migration after the earlier three before enabling Cloud mode. It adds message-linked alerts and RPCs and includes `messages`, `claims` and `notifications` in the Supabase Realtime publication without weakening RLS. `npm run test:chat` runs the targeted chat logic and PostgreSQL tests; mock subscriptions verify reconnect/cleanup behavior, while local PostgreSQL verifies pagination, read cursors, idempotency and access control. Actual Supabase WebSocket delivery still requires a configured project and two devices. See `docs/STEP2_SETUP.md`.
+
+## Phase 4 Admin moderation and analytics
+
+Students can privately flag another member's visible report, with one open flag per reporter/report. Admins can dismiss a flag or hide/restore a report with a required reason and audit entry. Hiding resolves its open flags, notifies the owner and reporters, and preserves reports, claims and messages. Hidden reports leave public Browse/Home/Smart Matches; existing claim participants, the owner and Admin retain access. New claims and handover pause until all linked reports are restored; private chat and cancellation/disputes remain available.
+
+Admin suspension/restoration and editing another member's report require audit reasons. Admins moderate other members' reports through hide/restore instead of permanent deletion. Owners cannot delete hidden reports or reports with open flags. Existing owner editing remains available, and editing never automatically restores a hidden report. Hiding does not revoke previously shared public Storage image URLs.
+
+Dashboard tables support filters, search and pagination; CSV exports the filtered report snapshot without contact data and neutralizes spreadsheet formulas. Date-filtered metrics and six-month/category charts use a full-database Admin-only aggregate RPC, independently of the 500-record list cap. Dates use UTC; users and open flags are counted across all dates. Apply the fifth migration after the first four before enabling Cloud mode. `npm run test:admin` runs the targeted moderation tests without the complete suite. Broader server-side list pagination remains Phase 5 work.
 
 ## Scope decisions
 

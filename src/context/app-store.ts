@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { ClaimStatus, DemoDB, ReportDraft, UserProfile } from "@/lib/types";
+import type { AdminAnalytics, ClaimStatus, DemoDB, ReportDraft, UserProfile } from "@/lib/types";
 import type { MessageCursor } from "@/lib/chat";
 
 export { DEMO_MODE } from "@/lib/config";
@@ -17,7 +17,7 @@ export type AppStore = {
   switchUser: (id: string | null) => void;
   registerDemo: (name: string, email: string) => void;
   addReport: (draft: ReportDraft) => Result<string>;
-  editReport: (id: string, draft: ReportDraft) => Result<void>;
+  editReport: (id: string, draft: ReportDraft, reason?: string) => Result<void>;
   removeReport: (id: string) => Result<void>;
   requestClaim: (reportId: string, message: string, relatedReportId?: string) => Result<string>;
   updateClaim: (claimId: string, status: ClaimStatus) => Result<void>;
@@ -27,7 +27,11 @@ export type AppStore = {
   markNotificationRead: (id: string) => Result<void>;
   markAllRead: () => Result<void>;
   markClaimMessagesRead: (claimId: string, through: MessageCursor) => Result<void>;
-  suspendUser: (id: string, suspended: boolean) => Result<void>;
+  suspendUser: (id: string, suspended: boolean, reason: string) => Result<void>;
+  flagReport: (id: string, reason: string) => Result<void>;
+  moderateReport: (id: string, hidden: boolean, reason: string) => Result<void>;
+  dismissReportFlag: (id: string, reason: string) => Result<void>;
+  getAdminAnalytics: (from?: string, to?: string) => Result<AdminAnalytics>;
   resetDemo: () => void;
 };
 

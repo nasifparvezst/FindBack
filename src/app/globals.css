@@ -47,3 +47,14 @@
 .chat-connection{display:block;margin:8px 0 12px;color:#55736b;font-size:11px}
 .chat-scroll{overflow-anchor:none}.chat-message p{overflow-wrap:anywhere;white-space:pre-wrap}
 .chat-compose input{min-width:0}.chat-panel .form-error button{margin-left:10px}
+
+/* Admin moderation, filtering and reason forms. */
+.admin-date-filters,.admin-list-filters{display:flex;flex-wrap:wrap;align-items:end;gap:14px;padding:18px;margin-bottom:16px}
+.admin-date-filters .field,.admin-list-filters .field{flex:1;min-width:145px}.admin-list-filters .field:first-child{flex:2}
+.admin-scope{font-size:12px;line-height:1.6;color:#617e73;margin:12px 0 18px}.admin-metrics{margin-bottom:22px}
+.admin-decision{padding:22px;margin:18px 0}.admin-decision h3{font-size:16px}.admin-decision p,.report-flag-form p{font-size:12px;line-height:1.6;color:#617e73}
+.admin-decision label,.report-flag-form label{display:block;font-size:12px;font-weight:700;margin:12px 0 8px}
+.admin-decision textarea,.report-flag-form textarea{width:100%;min-height:95px;border:1px solid #cfdfd7;padding:10px;border-radius:8px;font:inherit;margin-bottom:12px}
+.admin-reason-text{display:block;max-width:340px;white-space:pre-wrap;overflow-wrap:anywhere}.admin-dashboard .activity-item small{overflow-wrap:anywhere}
+.report-flag-form{margin-top:20px}.admin-dashboard .bar-chart{gap:8px}.admin-dashboard .chart-column span{font-size:10px}
+@media(max-width:600px){.admin-date-filters .field,.admin-list-filters .field{min-width:100%;flex-basis:100%}.admin-metrics .stat-card{padding:14px}.admin-dashboard .stat-value{font-size:24px}}
