@@ -5,6 +5,11 @@ export type DataQuery = { kind: DataKind; page?: number; pageSize?: number; sear
 export type DataPage = { db: DemoDB; ids: string[]; total: number; page: number; pageSize: number; snapshot: string; stats: Record<string, number>; imagePaths?: Record<string, string | null> };
 export type QueryPage = (query: DataQuery, signal?: AbortSignal) => Promise<DataPage>;
 
+// Page changes can retain counters, but a different account or filter cannot inherit them.
+export function dataPageScope(query: DataQuery, userId?: string): string {
+  return `${userId || "anon"}:${JSON.stringify({ ...query, page: undefined })}`;
+}
+
 export function routeQuery(path: string): DataQuery {
   const report = /^\/item\/([^/]+)(?:\/edit)?$/.exec(path);
   const claim = /^\/claims\/([^/]+)$/.exec(path);

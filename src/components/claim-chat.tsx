@@ -86,8 +86,10 @@ function Conversation({ claim, history }: { claim: Claim; history: History }) {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
   const [readError, setReadError] = useState("");
+  const [sent, setSent] = useState(false);
   const [awayFromBottom, setAwayFromBottom] = useState(false);
   const scroll = useRef<HTMLDivElement>(null);
+  const composer = useRef<HTMLInputElement>(null);
   const bottom = useRef(true);
   const deliveryId = useRef<string | null>(null);
   const last = history.messages.at(-1);
@@ -113,14 +115,15 @@ function Conversation({ claim, history }: { claim: Claim; history: History }) {
   const onSend = async (event: FormEvent) => {
     event.preventDefault();
     if (sending || !draft.trim()) return;
-    setSending(true); setSendError("");
+    setSending(true); setSendError(""); setSent(false);
     try {
       deliveryId.current ??= crypto.randomUUID();
       await sendMessage(claim.id, draft, deliveryId.current);
       deliveryId.current = null; setDraft(""); bottom.current = true; setAwayFromBottom(false); await history.retry();
+      setSent(true);
     }
     catch (err) { setSendError(err instanceof Error ? err.message : "Could not send message. Your draft is saved here; retry when connected."); }
-    finally { setSending(false); }
+    finally { setSending(false); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true })); }
   };
   const loadOlder = async () => {
     const element = scroll.current;
@@ -129,7 +132,7 @@ function Conversation({ claim, history }: { claim: Claim; history: History }) {
     bottom.current = false;
     setAwayFromBottom(true);
     await history.more();
-    requestAnimationFrame(() => { if (element) element.scrollTop = position + element.scrollHeight - height; });
+    requestAnimationFrame(() => { if (element) { element.scrollTop = position + element.scrollHeight - height; element.focus({ preventScroll: true }); } });
   };
   const statusText = history.status === "live" ? "Live updates connected" : history.status === "retrying" ? "Reconnecting. Messages also refresh every 30 seconds." : "Connecting to live updates...";
   return <article className="panel chat-panel">
@@ -137,7 +140,9 @@ function Conversation({ claim, history }: { claim: Claim; history: History }) {
     <p>{owner?.name} ↔ {claimant?.name}</p>
     {history.status && <small className="chat-connection" role="status">{statusText}</small>}
     {(history.error || sendError || readError) && <div className="form-error" role="alert">{history.error || sendError || readError}{(history.error || readError) && <button type="button" className="text-link" onClick={() => { void history.retry(); void markRead(); }}>Retry</button>}</div>}
-    <div ref={scroll} className="chat-scroll" role="log" aria-label="Conversation history" aria-live="polite" aria-relevant="additions" onScroll={() => {
+    {sendError && <p className="chat-hint">Your message draft is kept. You can send it again when connected.</p>}
+    <span className="sr-only" role="status">{sent ? "Message sent." : sending ? "Sending message..." : ""}</span>
+    <div ref={scroll} tabIndex={0} className="chat-scroll" role="log" aria-label="Conversation history" aria-live="polite" aria-relevant="additions" aria-busy={history.loading || undefined} onScroll={() => {
       const element = scroll.current;
       if (element) bottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 48;
       setAwayFromBottom(!bottom.current);
@@ -145,10 +150,10 @@ function Conversation({ claim, history }: { claim: Claim; history: History }) {
     }}>
       {history.hasMore ? <button type="button" className="btn btn-light btn-sm" disabled={history.loading} onClick={() => { void loadOlder(); }}>{history.loading ? "Loading..." : "Load older messages"}</button> : <div className="chat-message"><strong>Claim request · {claimant?.name}</strong><p>{claim.message}</p><small>{relativeDate(claim.createdAt)}</small></div>}
       {history.loading && !history.messages.length && <p role="status">Loading messages...</p>}
-      {history.messages.map((entry) => <div key={entry.id} className={`chat-message ${entry.senderId === user.id ? "mine" : ""}`}><strong>{db.users.find((person) => person.id === entry.senderId)?.name || "Campus user"}</strong><p>{entry.body}</p><small>{relativeDate(entry.createdAt)}</small></div>)}
+      {history.messages.map((entry) => <div key={entry.id} className={`chat-message ${entry.senderId === user.id ? "mine" : ""}`}><strong>{db.users.find((person) => person.id === entry.senderId)?.name || "Campus user"}</strong><p>{entry.body}</p><time dateTime={entry.createdAt} title={new Date(entry.createdAt).toLocaleString()}>{relativeDate(entry.createdAt)} · {new Date(entry.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time></div>)}
     </div>
     {awayFromBottom && unread > 0 && <button type="button" className="text-link" onClick={() => { bottom.current = true; setAwayFromBottom(false); if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; void markRead(); }}>View new messages ({unread})</button>}
-    {canMessageClaim(claim) ? <form className="chat-compose" onSubmit={(event) => { void onSend(event); }}><input required maxLength={2000} disabled={sending} placeholder="Write a private message..." aria-label="Write a message" value={draft} onChange={(event) => { deliveryId.current = null; setDraft(event.target.value); }} /><button disabled={sending || !draft.trim()} className="btn btn-primary" type="submit"><Send size={16} />{sending ? "Sending..." : "Send"}</button></form> : <InfoNote>This claim is closed, so further messages are disabled.</InfoNote>}
+    {canMessageClaim(claim) ? <><form className="chat-compose" aria-busy={sending || undefined} onSubmit={(event) => { void onSend(event); }}><input ref={composer} required maxLength={2000} disabled={sending} placeholder="Write a private message..." aria-label="Write a message" aria-describedby="chat-message-hint" value={draft} onChange={(event) => { deliveryId.current = null; setDraft(event.target.value); }} /><button disabled={sending || !draft.trim()} className="btn btn-primary" type="submit"><Send size={16} />{sending ? "Sending..." : "Send"}</button></form><p id="chat-message-hint" className="chat-hint">{draft.length} / 2000 characters. Never share passwords, PINs or full ID numbers.</p></> : <InfoNote>This claim is closed, so further messages are disabled.</InfoNote>}
   </article>;
 }
 

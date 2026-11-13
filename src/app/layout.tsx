@@ -9,5 +9,5 @@ export const metadata: Metadata = {
   icons: { icon: "/findback-logo.svg" },
 };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><AppProvider><AppShell>{children}</AppShell></AppProvider></body></html>;
+  return <html lang="en" data-scroll-behavior="smooth"><body><AppProvider><AppShell>{children}</AppShell></AppProvider></body></html>;
 }

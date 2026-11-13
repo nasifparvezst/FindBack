@@ -60,12 +60,12 @@ export default function Browse() {
           <div className="field"><label htmlFor="status">Status</label><select id="status" value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }}><option value="all">Any status</option><option value="open">Open</option><option value="returned">Returned</option></select></div>
           <div className="field"><label htmlFor="sort">Sort by</label><select id="sort" value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); }}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="date">Item date</option><option value="alphabetical">Name A-Z</option></select></div>
         </div>
-        <div className="filter-bottom"><span>Optional date range: <input aria-label="From date" className="date-filter" type="date" value={from} onChange={(event) => { setFrom(event.target.value); setPage(1); }} /> - <input aria-label="To date" className="date-filter" type="date" value={to} onChange={(event) => { setTo(event.target.value); setPage(1); }} /></span><button onClick={clear}>Clear all filters</button></div>
+        <div className="filter-bottom"><div className="date-range-fields"><span>Item date (optional)</span><label className="date-range-field">From<input aria-label="From date" className="date-filter" type="date" value={from} onChange={(event) => { setFrom(event.target.value); setPage(1); }} /></label><label className="date-range-field">To<input aria-label="To date" className="date-filter" type="date" value={to} onChange={(event) => { setTo(event.target.value); setPage(1); }} /></label></div><button onClick={clear}>Clear all filters</button></div>
       </div>
       <DataPageStatus page={remote} />
       <div className="result-summary">Showing {total === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, total)} of {total} matching reports</div>
-      <div className="items-grid">{visibleReports.map((report) => <ItemCard key={report.id} report={report} />)}{total === 0 && !remote?.loading && !remote?.error && <EmptyState title="No matching items found" description="Try different keywords, dates, or categories to broaden your search." actionHref="/report/lost" actionText="Submit a report" />}</div>
-      <Pagination page={currentPage} totalPages={totalPages} onChange={setPage} />
+      <div className="items-grid" aria-busy={remote?.loading || undefined}>{visibleReports.map((report) => <ItemCard key={report.id} report={report} />)}{total === 0 && !remote?.loading && !remote?.error && <EmptyState title="No matching items found" description="Try different keywords, dates, or categories to broaden your search." actionHref="/report/lost" actionText="Submit a report" />}</div>
+      <Pagination page={currentPage} totalPages={totalPages} onChange={setPage} busy={remote?.loading} label="Browse report pages" />
     </section>
   );
 }

@@ -2,7 +2,7 @@
 
 A Next.js 16 + React 19 + TypeScript campus lost-and-found application. Step 3 improves report creation and editing, duplicate warnings, browsing, My Reports management, image privacy and storage cleanup.
 
-> **Release status:** Phases 1–5 are implemented, including server-side filtering and pagination without the former 500-record snapshot cap. Phase 5 passed 15 targeted logic/SQL tests, TypeScript, changed-file lint, Demo browser checks and Cloud-mode browser checks against a disposable local API/database fixture with 550+ records. Real Supabase Auth/Realtime, email and concurrent multi-device verification remain required. A full build/suite is deferred to the requested final audit.
+> **Release status:** Phases 1–6 are implemented, including paged Cloud data and mobile/keyboard usability improvements. Phase 6 passed seven targeted logic tests, TypeScript, changed-file lint, Demo browser checks and isolated paging UI checks. Real devices/screen readers and live Supabase verification remain required. A complete audit/build/suite is deferred until the explicit FINAL AUDIT request.
 
 ## Requirements
 
@@ -80,6 +80,7 @@ npm run test:claims
 npm run test:chat
 npm run test:admin
 npm run test:paging
+npm run test:ui
 npm run build
 ```
 
@@ -120,6 +121,16 @@ Cloud Smart Matching selects an open source report, then ranks each 25-candidate
 Admin CSV walks every filtered report page using `(created_at,id)` cursors and a server timestamp, supports cancellation, and downloads only after all pages succeed. Newer inserts are excluded; updates/deletions during export reflect the state when fetched, not a transaction-wide snapshot. Normal browsing never automatically downloads an entire table.
 
 Apply the sixth migration once after the earlier five. `npm run test:paging` verifies paging beyond 500, literal search/filter/sort, RLS, direct contexts, complete exports, cancellation and decoding. Browser verification used an isolated local PGlite API with stand-in Auth responses; it does not establish live Supabase authentication or WebSocket delivery.
+
+## Phase 6 mobile, keyboard and feedback
+
+The app includes a skip link, route-change focus, current-page navigation, and a mobile menu with expanded state, Escape/outside close and keyboard focus restoration. Account access remains visible on narrow screens. Controls and tables have visible focus, readable supporting text, touch targets, captions/column headers and keyboard-scrollable regions. Narrow filters/date labels, notification actions, long content and status badges reflow without page-wide horizontal overflow. Reduced-motion preferences disable smooth scrolling and transitions.
+
+Report validation keeps the existing rules and provider error messages, adding field-linked summaries, inline errors/hints and focus to the error summary. Photo processing announces progress and prevents premature submission; stale image processing cannot reattach a photo after category changes or navigation. Admin/flag forms focus the reason field and restore useful feedback focus. Chat keeps keyboard access to history, shows message times and send feedback, and returns focus to the composer while retaining a failed draft.
+
+Paged UI retains only counters across same-filter page requests; old rows stay hidden, and a different filter/account cannot inherit counters. Controls remain mounted while loading, announce page changes and return focus to visible feedback after Retry. Demo guest choice now persists explicitly across reloads; missing storage still gives the existing first-use default, while unavailable users remain signed out.
+
+`npm run test:ui` tests guest persistence, counter scopes and the structured validation contract. Targeted Chromium checks covered keyboard/accessible-tree state, 320–1280px layouts, form/photo feedback, table scrolling, chat/notification wrapping, selected text contrast, reduced motion, loading/Retry and stale responses. The paging checks used a small isolated provider fixture importing the actual components. This is not a full accessibility certification; physical iOS/Android and NVDA/VoiceOver verification remain pending. No backend schema changes were introduced in Phase 6.
 
 ## Scope decisions
 

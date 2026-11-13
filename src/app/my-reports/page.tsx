@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, ClipboardList, Clock3, PackageCheck, Plus, Search } from "lucide-react";
 import { useApp } from "@/context/app-context";
-import { EmptyState, ItemCard, PageHeading, Pagination, StatusTag } from "@/components/ui";
+import { EmptyState, ItemCard, PageHeading, Pagination, StatusTag, TableRegion } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import { useDataPage } from "@/context/use-data-page";
 import { DataPageStatus } from "@/components/data-page-status";
@@ -69,10 +69,10 @@ export default function MyReports() {
         <div className="panel my-report-stat"><span><Clock3 size={18} /></span><div><strong>{pendingIncoming}</strong><small>Pending incoming claims</small></div></div>
         <div className="panel my-report-stat"><span><ArrowUpRight size={18} /></span><div><strong>{pendingOutgoing}</strong><small>Pending my claims</small></div></div>
       </div>
-      <div className="tab-bar">
-        <button className={tab === "reports" ? "active" : ""} onClick={() => changeTab("reports")}>My reports ({ownCount})</button>
-        <button className={tab === "incoming" ? "active" : ""} onClick={() => changeTab("incoming")}>Incoming claims ({incomingCount})</button>
-        <button className={tab === "outgoing" ? "active" : ""} onClick={() => changeTab("outgoing")}>My claims ({outgoingCount})</button>
+      <div className="tab-bar" role="group" aria-label="Report and claim views">
+        <button aria-pressed={tab === "reports"} className={tab === "reports" ? "active" : ""} onClick={() => changeTab("reports")}>My reports ({ownCount})</button>
+        <button aria-pressed={tab === "incoming"} className={tab === "incoming" ? "active" : ""} onClick={() => changeTab("incoming")}>Incoming claims ({incomingCount})</button>
+        <button aria-pressed={tab === "outgoing"} className={tab === "outgoing" ? "active" : ""} onClick={() => changeTab("outgoing")}>My claims ({outgoingCount})</button>
       </div>
       <div className="my-report-filters panel">
         <div className="field"><label htmlFor="my-search">Search {tab === "reports" ? "reports" : "claims"}</label><div className="search-with-icon"><Search size={16} /><input id="my-search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder={tab === "reports" ? "Item name, category or location" : "Item, person or claim status"} /></div></div>
@@ -81,9 +81,9 @@ export default function MyReports() {
       <div className="result-summary">{currentCount} {tab === "reports" ? "reports" : "claims"} found</div>
       <DataPageStatus page={remote} />
       {tab === "reports" ? (
-        <div className="items-grid">{pageReports.map((report) => <ItemCard key={report.id} report={report} />)}{filteredReports.length === 0 && !remote?.loading && !remote?.error && <EmptyState title="No reports found" description="Change the filters or create your first lost or found report." actionHref="/report/lost" actionText="Create a report" />}</div>
+        <div className="items-grid" aria-busy={remote?.loading || undefined}>{pageReports.map((report) => <ItemCard key={report.id} report={report} />)}{filteredReports.length === 0 && !remote?.loading && !remote?.error && <EmptyState title="No reports found" description="Change the filters or create your first lost or found report." actionHref="/report/lost" actionText="Create a report" />}</div>
       ) : (
-        <div className="panel data-table-wrap"><table className="data-table"><thead><tr><th>Item</th><th>Person</th><th>Created</th><th>Status</th><th>Action</th></tr></thead><tbody>
+        <TableRegion label={tab === "incoming" ? "Incoming claims" : "My submitted claims"} busy={remote?.loading}><table className="data-table"><caption className="sr-only">{tab === "incoming" ? "Incoming claims" : "My submitted claims"}</caption><thead><tr><th scope="col">Item</th><th scope="col">Person</th><th scope="col">Created</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead><tbody>
           {pageClaims.map((claim) => {
             const report = db.reports.find((item) => item.id === claim.reportId);
             const personId = tab === "incoming" ? claim.claimantId : report?.ownerId;
@@ -92,9 +92,9 @@ export default function MyReports() {
             return <tr key={claim.id}><td><strong>{report?.title || "Deleted report"}</strong><small>{report?.type} report</small></td><td>{person?.name || "Campus user"}</td><td>{formatDate(claim.createdAt)}</td><td><StatusTag status={claim.status} /></td><td><Link href={`/claims/${claim.id}`} className="text-link">Open <ArrowUpRight size={14} />{unread > 0 && <span className="claim-unread">{unread} unread</span>}</Link></td></tr>;
           })}
           {filteredClaims.length === 0 && !remote?.loading && !remote?.error && <tr><td colSpan={5}><EmptyState title={tab === "incoming" ? "No incoming claims" : "No claims submitted"} description="New requests will appear here when someone connects with one of your items." /></td></tr>}
-        </tbody></table></div>
+        </tbody></table></TableRegion>
       )}
-      <Pagination page={currentPage} totalPages={totalPages} onChange={setPage} />
+      <Pagination page={currentPage} totalPages={totalPages} onChange={setPage} busy={remote?.loading} label="My reports and claims pages" />
     </section>
   );
 }

@@ -9,6 +9,7 @@ import { validEmail, validateReport } from "@/lib/validation";
 import { compareMessages, notificationSummary, type MessageCursor } from "@/lib/chat";
 import { addReportFlag, applyModeration, buildAdminAnalytics, moderationReason } from "@/lib/moderation";
 import { Context, DEMO_MODE } from "@/context/app-store";
+import { DEMO_GUEST, restoreDemoUser } from "@/lib/demo-session";
 
 const DB_KEY = "findback_v2_demo_data";
 const USER_KEY = "findback_v2_demo_user";
@@ -32,14 +33,14 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         const parsed: DemoDB = saved ? JSON.parse(saved) as DemoDB : createDemoDB();
         if (!parsed || !Array.isArray(parsed.users) || !Array.isArray(parsed.reports) || !Array.isArray(parsed.claims) || !Array.isArray(parsed.messages) || !Array.isArray(parsed.notifications) || !Array.isArray(parsed.activity)) throw new Error("Invalid demo data");
         setDB(parsed);
-        setUserId(localStorage.getItem(USER_KEY) || demoUsers[0].id);
+        setUserId(restoreDemoUser(localStorage.getItem(USER_KEY), demoUsers[0].id, parsed.users));
       } catch { setDB(createDemoDB()); setUserId(demoUsers[0].id); }
       setReady(true);
     }, 0);
     return () => clearTimeout(timer);
   }, []);
   useEffect(() => { if (ready) localStorage.setItem(DB_KEY, JSON.stringify(db)); }, [db, ready]);
-  useEffect(() => { if (ready) { if (userId) localStorage.setItem(USER_KEY, userId); else localStorage.removeItem(USER_KEY); } }, [userId, ready]);
+  useEffect(() => { if (ready) localStorage.setItem(USER_KEY, userId ?? DEMO_GUEST); }, [userId, ready]);
 
   const user = useMemo(() => db.users.find((u) => u.id === userId && !u.suspended) ?? null, [db.users, userId]);
   const isAdmin = user?.role === "admin";
