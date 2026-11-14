@@ -1,0 +1,33 @@
+name: Targeted release checks
+
+# Manual only. Full audit/build/suite is reserved for an explicit FINAL AUDIT request.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security-and-demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_DEMO_MODE: 'true'
+      E2E_BASE_URL: http://localhost:3100
+      # Isolated sample-data Chrome on the ephemeral runner only.
+      E2E_NO_SANDBOX: 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run release:check -- --mode demo
+      - run: npm run test:security
+      - name: Start local Demo server
+        run: |
+          npm run dev -- --hostname 127.0.0.1 --port 3100 > /tmp/findback-dev.log 2>&1 &
+      - run: npm run e2e:demo

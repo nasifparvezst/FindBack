@@ -34,6 +34,8 @@ before(async () => {
     alter table storage.objects enable row level security;
     create function storage.foldername(text) returns text[] language sql immutable as $$ select string_to_array($1,'/') $$;
     create function storage.extension(text) returns text language sql immutable as $$ select regexp_replace($1,'^.*[.]','') $$;
+    grant usage on schema storage to anon,authenticated;
+    grant select,insert,delete on storage.objects to authenticated;
   `);
   await db.exec(migration('202611050001_initial.sql'));
   await db.exec(migration('202611060001_report_management_privacy.sql'));
@@ -387,4 +389,39 @@ test('paging SQL: item context retains the reserved claim despite many newer rel
   const context=await dataPage(owner,{kind:'report',id:found});assert.deepEqual(context.bundle.claims.map(c=>c.id),[id]);assert.equal(context.stats.claimCount,1);
   assert.deepEqual(context.bundle.contacts.map(c=>c.report_id),[found]);
   const other=await dataPage(claimant,{kind:'claim',id});assert.deepEqual(other.bundle.contacts.map(c=>c.report_id),[lost]);
+});
+
+test('security SQL: campus domain is enforced on signup and email change, including metadata role forgery',async()=>{
+  await assert.rejects(db.query("insert into auth.users(id,email,email_confirmed_at) values($1,'outsider@example.com',now())",[uid(999)]),/seu.edu.bd/);
+  await assert.rejects(db.query("update auth.users set email='outsider@example.com' where id=$1",[owner]),/seu.edu.bd/);
+  await db.query("insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) values($1,'UPPER@SEU.EDU.BD',now(),'{\"role\":\"admin\",\"is_admin\":true}')",[uid(999)]);
+  assert.equal((await as(uid(999),'select public.is_admin() as allowed'))[0].allowed,false);
+  await assert.rejects(as(uid(999),'select public.get_admin_analytics()'),/Admin/);
+  await assert.rejects(as(uid(999),'insert into public.admin_members(user_id) values($1)',[uid(999)]),/permission denied/);
+  assert.equal((await query('select email from public.profile_emails where user_id=$1',[uid(999)]))[0].email,'upper@seu.edu.bd');
+});
+test('security SQL: Storage upload/delete policies enforce folder ownership and active membership',async()=>{
+  await as(owner,"insert into storage.objects(bucket_id,name) values('report-images',$1)",[owner+'/photo.png']);
+  await assert.rejects(as(stranger,"insert into storage.objects(bucket_id,name) values('report-images',$1)",[owner+'/other.png']),/row-level security/);
+  await assert.rejects(as(owner,"insert into storage.objects(bucket_id,name) values('report-images',$1)",[owner+'/unsafe.svg']),/row-level security/);
+  await assert.rejects(as(owner,"insert into storage.objects(bucket_id,name) values('private-bucket',$1)",[owner+'/photo.png']),/row-level security/);
+  await as(stranger,'delete from storage.objects where name=$1',[owner+'/photo.png']);assert.equal((await query('select * from storage.objects')).length,1);
+  await db.query('update public.profiles set suspended_at=now() where id=$1',[owner]);
+  assert.equal((await as(owner,'select * from storage.objects')).length,0);
+  await assert.rejects(as(owner,"insert into storage.objects(bucket_id,name) values('report-images',$1)",[owner+'/new.png']),/row-level security/);
+  await as(admin,'delete from storage.objects where name=$1',[owner+'/photo.png']);assert.equal((await query('select * from storage.objects')).length,0);
+});
+test('security SQL: Storage constraints remain public-photo only and reject ID-card image reports',async()=>{
+  const [bucket]=await query("select public,file_size_limit,allowed_mime_types from storage.buckets where id='report-images'");
+  assert.equal(bucket.public,true);assert.equal(bucket.file_size_limit,2097152);assert.deepEqual(bucket.allowed_mime_types,['image/jpeg','image/png','image/webp']);
+  await assert.rejects(as(owner,"select public.create_report('found','Student card','ID Card','','','Campus Library',current_date,'A student card found on campus','01712345678',$1)",[owner+'/card.png']),/reports_id_card_photo_private/);
+  await db.query('update auth.users set email_confirmed_at=null where id=$1',[owner]);
+  await assert.rejects(as(owner,"insert into storage.objects(bucket_id,name) values('report-images',$1)",[owner+'/unverified.png']),/row-level security/);
+});
+test('security SQL: bound page queries do not execute injected search text or expose message sender forgery',async()=>{
+  const malicious="'; drop table public.reports; --";
+  const result=await dataPage(null,{kind:'browse',search:malicious});assert.equal(result.total,0);assert.equal((await query('select count(*)::int n from public.reports'))[0].n,2);
+  const id=await submit();
+  await assert.rejects(as(owner,'insert into public.messages(claim_id,sender_id,body) values($1,$2,$3)',[id,claimant,'Trying to impersonate the claimant']),/row-level security/);
+  await assert.rejects(as(owner,'update public.profiles set suspended_at=null where id=$1',[owner]),/permission denied/);
 });

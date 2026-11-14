@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { Suspense, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, LockKeyhole, ShieldCheck, UserPlus } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { validEmail } from "@/lib/validation";
+import { AuthFeedback } from "@/components/auth-feedback";
 
 export function CloudLogin() {
   const router = useRouter();
@@ -27,6 +28,7 @@ export function CloudLogin() {
     <span className="eyebrow">Verified campus access</span><h1>Welcome back.</h1>
     <p>Sign in with your confirmed university email to view reports, submit claims, and follow your recoveries.</p>
     <div className="alert-banner"><LockKeyhole size={18}/> Secure Supabase authentication. No demo passwords are accepted.</div>
+    <Suspense fallback={null}><AuthFeedback /></Suspense>
     <form onSubmit={submit}>
       <div className="field"><label htmlFor="email">University email</label><input id="email" type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="student@seu.edu.bd"/></div>
       <div className="field" style={{marginTop:15}}><label htmlFor="password">Password</label><input id="password" type="password" autoComplete="current-password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)} placeholder="Your password"/></div>

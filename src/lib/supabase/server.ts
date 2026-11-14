@@ -11,8 +11,9 @@ export async function createSupabaseServerClient() {
     cookies: {
       getAll() { return cookieStore.getAll(); },
       setAll(values) {
-        try { values.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); }
-        catch { /* Cookie writes are not permitted in a Server Component. Proxy refreshes sessions in Phase 2. */ }
+        // These clients are created in Route Handlers, where cookie writes are supported.
+        // A failed write must fail the Auth flow rather than report a session that was not saved.
+        values.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
       },
     },
   });

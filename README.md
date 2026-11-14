@@ -1,8 +1,8 @@
-# FindBack 2.0 -- Step 3
+# FindBack 2.0
 
-A Next.js 16 + React 19 + TypeScript campus lost-and-found application. Step 3 improves report creation and editing, duplicate warnings, browsing, My Reports management, image privacy and storage cleanup.
+A Next.js 16 + React 19 + TypeScript campus lost-and-found application with report management, Smart Matching, private claims/chat, two-party handover and Admin moderation.
 
-> **Release status:** Phases 1–6 are implemented, including paged Cloud data and mobile/keyboard usability improvements. Phase 6 passed seven targeted logic tests, TypeScript, changed-file lint, Demo browser checks and isolated paging UI checks. Real devices/screen readers and live Supabase verification remain required. A complete audit/build/suite is deferred until the explicit FINAL AUDIT request.
+> **Release status:** Phases 1–7 are implemented. Phase 7 adds security headers, safe Auth redirects/session caching, deployment configuration checks and reproducible Demo browser checks. Targeted local checks passed; live Supabase/Auth/Storage/Realtime, email delivery and real-device verification remain pending. A complete audit/build/suite is deferred until the explicit FINAL AUDIT request. The app has not been deployed.
 
 ## Requirements
 
@@ -81,6 +81,9 @@ npm run test:chat
 npm run test:admin
 npm run test:paging
 npm run test:ui
+npm run test:security
+npm run e2e:demo
+npm run release:check -- --mode demo
 npm run build
 ```
 
@@ -89,6 +92,8 @@ npm run build
 `npm run typecheck` generates Next.js route types before checking TypeScript, so it also works before the first dev server or production build. Lint excludes generated `.test-build` output and supports the Node test runner's CommonJS test files.
 
 `npm run test:claims` runs only the claim state-machine and disposable PostgreSQL/RLS tests. PGlite is a development-only dependency; the tests simulate Supabase-managed Auth/Storage schemas locally and do not connect to your Supabase project. Its single connection does not reproduce concurrent transactions on a live server.
+
+Use the targeted command relevant to the current change. The full suite, build and full-project lint are reserved for an explicitly requested FINAL AUDIT.
 
 ## Phase 2 handover
 
@@ -131,6 +136,14 @@ Report validation keeps the existing rules and provider error messages, adding f
 Paged UI retains only counters across same-filter page requests; old rows stay hidden, and a different filter/account cannot inherit counters. Controls remain mounted while loading, announce page changes and return focus to visible feedback after Retry. Demo guest choice now persists explicitly across reloads; missing storage still gives the existing first-use default, while unavailable users remain signed out.
 
 `npm run test:ui` tests guest persistence, counter scopes and the structured validation contract. Targeted Chromium checks covered keyboard/accessible-tree state, 320–1280px layouts, form/photo feedback, table scrolling, chat/notification wrapping, selected text contrast, reduced motion, loading/Retry and stale responses. The paging checks used a small isolated provider fixture importing the actual components. This is not a full accessibility certification; physical iOS/Android and NVDA/VoiceOver verification remain pending. No backend schema changes were introduced in Phase 6.
+
+## Phase 7 security and release preparation
+
+Responses carry CSP, frame/content-type protections and restricted browser permissions. Auth redirects use fixed destinations, show safe confirmation/callback feedback, and disable caching. Cloud session refresh preserves Supabase's cookie/cache headers and disables shared caching. Production Cloud builds require a valid HTTPS Supabase URL, a publishable/legacy anon key and the server-only `APP_ORIGIN`; malformed settings and public secret/service-role keys fail early. The CSP allows inline Next.js scripts/styles, so it is defense in depth rather than a complete XSS barrier. See `docs/SECURITY_NOTES.md`.
+
+`npm run test:security` covers configuration, redirects, cache headers and focused SQL security boundaries. `npm run e2e:demo` uses installed Chrome/Chromium in a fresh temporary profile against a loopback Demo server; start `npm run dev -- --hostname 127.0.0.1 --port 3100` first. It checks real HTTP headers/Auth failures, report/photo creation, inert report text, matching, claim/chat access and two-party completion. Use `E2E_BASE_URL` to change the local origin or `CHROME_PATH` for another Chrome executable. Results and failure screenshots are ignored under `.test-build/e2e/`. This flow does not verify real Cloud authentication or email.
+
+Set deployment environment values, then run `npm run release:check -- --mode demo` or `--mode cloud`. This checks configuration only and requires an explicit `NEXT_PUBLIC_DEMO_MODE`. `.github/workflows/release-checks.yml` provides a manual GitHub Actions version of the targeted checks; it does not deploy or run the full audit. The workflow has not been executed on GitHub. Remaining release checks are tracked in `docs/SECURITY_TEST_CHECKLIST.md`.
 
 ## Scope decisions
 
