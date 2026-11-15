@@ -4,13 +4,14 @@
 begin;
 
 -- Public item photos must never expose student ID cards or other identity documents.
--- Remove any previously stored ID-card photos before enforcing the rule.
-delete from storage.objects as objects
-using public.reports as reports
-where objects.bucket_id = 'report-images'
-  and reports.category = 'ID Card'
-  and reports.image_path is not null
-  and objects.name = reports.image_path;
+-- Remove existing files through Storage API/Dashboard first. SQL metadata deletion
+-- does not delete the stored bytes and can leave orphaned private documents.
+do $$ begin
+  if exists (
+    select 1 from storage.objects objects join public.reports reports on objects.name=reports.image_path
+    where objects.bucket_id='report-images' and reports.category='ID Card'
+  ) then raise exception 'Remove ID Card photos through Storage API or Dashboard before applying this migration'; end if;
+end $$;
 
 update public.reports
 set image_path = null, updated_at = now()

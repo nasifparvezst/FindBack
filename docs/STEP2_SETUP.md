@@ -27,8 +27,11 @@ Open **SQL Editor > New query**. Open each SQL file from the project and run its
 4. `supabase/migrations/202611130001_private_chat_realtime.sql`
 5. `supabase/migrations/202611130002_admin_moderation.sql`
 6. `supabase/migrations/202611130003_paged_data.sql`
+7. `supabase/migrations/202611150001_message_insert_integrity.sql`
 
 Run only migrations not yet applied. The first creates the schema/security and Storage bucket; the second blocks public ID-card photos. The third adds two-party handover, cancel/dispute states and audited Admin resolution, preserves existing data and disables the legacy completion endpoint. Review the third migration before running it: pre-existing overlapping approved claims must be resolved first; existing approved claims will need both parties' new confirmations. No live migration has been applied by this development task.
+
+Before applying the second migration, remove any existing ID Card photos through **Storage API or Dashboard**, which deletes the file bytes as well as metadata. The migration refuses to clear report references while those objects remain. Do not delete `storage.objects` metadata directly, and do not rerun a previously applied migration. [Supabase object deletion](https://supabase.com/docs/guides/storage/management/delete-objects).
 
 In **Database > Tables**, confirm these tables exist: `profiles`, `profile_emails`, `admin_members`, `reports`, `report_contacts`, `claims`, `messages`, `notifications`, and `moderation_actions`.
 
@@ -37,6 +40,8 @@ The fourth migration preserves existing messages/notifications and enables the `
 The fifth migration adds `report_flags`, report hide/restore and Admin analytics. It preserves report/claim/message data, limits hidden report visibility, blocks new claims/handover on hidden reports, and requires reasons for moderation, suspension and Admin edits. Old Admin clients must refresh to use the required reason fields. Existing owners can still edit their reports. Review this migration and apply it once after the first four; no live migration was applied during development.
 
 The sixth migration replaces capped snapshots with filtered server pages and direct item/claim contexts, adds exact counters and supporting indexes, and enables complete cursor-based CSV export. It preserves existing data and RLS. Apply it once after the first five, then refresh the app. No live migration was applied during development.
+
+The seventh migration adds a before-insert message guard. It locks the claim against concurrent closure, blocks closed conversations and replaces authenticated callers' supplied timestamps with server time. Existing sender/participant RLS and idempotent send RPCs remain in force. Apply it once after the first six. Local SQL tests passed; real concurrent transactions still require live verification.
 
 ## 4. Enable email confirmation
 

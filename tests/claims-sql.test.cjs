@@ -43,6 +43,7 @@ before(async () => {
   await db.exec(migration('202611130001_private_chat_realtime.sql'));
   await db.exec(migration('202611130002_admin_moderation.sql'));
   await db.exec(migration('202611130003_paged_data.sql'));
+  await db.exec(migration('202611150001_message_insert_integrity.sql'));
 });
 beforeEach(async () => {
   await db.exec('reset role; truncate auth.users cascade');
@@ -55,6 +56,29 @@ beforeEach(async () => {
   }
 });
 after(async () => { if (db) await db.close(); });
+
+test('security SQL: ID Card privacy migration requires real Storage cleanup before clearing references', async () => {
+  const photo=owner+'/private-card.png';
+  await db.exec('alter table public.reports drop constraint reports_id_card_photo_private');
+  await db.query("update public.reports set category='ID Card',image_path=$1 where id=$2",[photo,found]);
+  await db.query("insert into storage.objects(bucket_id,name) values('report-images',$1)",[photo]);
+  await assert.rejects(db.exec(migration('202611060001_report_management_privacy.sql')),/Remove ID Card photos through Storage API/);
+  await db.exec('rollback');
+  assert.equal((await query('select image_path from public.reports where id=$1',[found]))[0].image_path,photo);
+  assert.equal((await query('select count(*)::int n from storage.objects where name=$1',[photo]))[0].n,1);
+  // Simulate the Storage API removing this fixture object before retrying the migration.
+  await db.query('delete from storage.objects where name=$1',[photo]);
+  await db.exec(migration('202611060001_report_management_privacy.sql'));
+  assert.equal((await query('select image_path from public.reports where id=$1',[found]))[0].image_path,null);
+});
+
+test('security SQL: direct message inserts use server time and reject closed conversations', async () => {
+  const id=await submit();
+  const [row]=await as(owner,"insert into public.messages(claim_id,sender_id,body,created_at) values($1,$2,'A real current message','2099-01-01T00:00:00Z') returning id",[id,owner]);
+  assert.equal((await query("select abs(extract(epoch from (created_at-clock_timestamp())))<10 current_time from public.messages where id=$1",[row.id]))[0].current_time,true);
+  await review(id);await confirm(id,owner);await confirm(id,claimant);
+  await assert.rejects(as(owner,"insert into public.messages(claim_id,sender_id,body) values($1,$2,'Attempt after handover closed')",[id,owner]),/conversation unavailable/);
+});
 
 test('SQL: one confirmation stays open; both complete once, in either order', async () => {
   for (const order of [[owner, claimant], [claimant, owner]]) {

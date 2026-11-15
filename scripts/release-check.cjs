@@ -8,5 +8,5 @@ try{
   const result=inspectDeployment(process.env,true);
   if(result.mode!==args[1])throw new Error('Deployment mode does not match the requested release mode.');
   console.log(`Deployment configuration passed (${result.mode}). No credential values were printed.`);
-  console.log('Configuration only: FINAL AUDIT, live Supabase/email checks and deployment verification remain required.');
+  console.log('Configuration only: review the final audit and complete live Supabase/email checks and deployment verification before launch.');
 }catch(error){console.error(error.message);process.exitCode=1;}

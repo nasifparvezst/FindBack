@@ -23,6 +23,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const [db, setDB] = useState<DemoDB>(() => ({ users: [], reports: [], claims: [], messages: [], notifications: [], activity: [] }));
   const [userId, setUserId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [storageError, setStorageError] = useState("");
 
   useEffect(() => {
     // Hydrate browser storage after mount and cancel the read on an early unmount.
@@ -39,8 +40,19 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     }, 0);
     return () => clearTimeout(timer);
   }, []);
-  useEffect(() => { if (ready) localStorage.setItem(DB_KEY, JSON.stringify(db)); }, [db, ready]);
-  useEffect(() => { if (ready) localStorage.setItem(USER_KEY, userId ?? DEMO_GUEST); }, [userId, ready]);
+  useEffect(() => {
+    if (!ready) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(DB_KEY, JSON.stringify(db));
+        localStorage.setItem(USER_KEY, userId ?? DEMO_GUEST);
+        setStorageError("");
+      } catch {
+        setStorageError("Your browser could not save these demo changes. Keep this page open or free browser storage before reloading.");
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [db, userId, ready]);
 
   const user = useMemo(() => db.users.find((u) => u.id === userId && !u.suspended) ?? null, [db.users, userId]);
   const isAdmin = user?.role === "admin";
@@ -158,6 +170,6 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   }, [db, user]);
 
   const resetDemo = () => { setDB(createDemoDB()); setUserId(demoUsers[0].id); };
-  return <Context.Provider value={{ ready, db, user, isAdmin, ...notificationSummary(db.notifications, user?.id), switchUser, registerDemo, addReport, editReport, removeReport, requestClaim, updateClaim, sendMessage, confirmHandover, manageClaim, markNotificationRead, markAllRead, markClaimMessagesRead, suspendUser, flagReport, moderateReport, dismissReportFlag, getAdminAnalytics, resetDemo }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ ready, db, user, isAdmin, syncError: storageError, ...notificationSummary(db.notifications, user?.id), switchUser, registerDemo, addReport, editReport, removeReport, requestClaim, updateClaim, sendMessage, confirmHandover, manageClaim, markNotificationRead, markAllRead, markClaimMessagesRead, suspendUser, flagReport, moderateReport, dismissReportFlag, getAdminAnalytics, resetDemo }}>{children}</Context.Provider>;
 }
 

@@ -10,6 +10,7 @@ import { watchPrivateUpdates } from "@/lib/realtime";
 import { moderationReason, validateAdminDates } from "@/lib/moderation";
 import { routeQuery, type DataQuery } from "@/lib/data-pages";
 import { decodeDataPage } from "@/lib/cloud-data";
+import { reportPhotoBlob } from "@/lib/report-photo";
 import type { AdminAnalytics, ClaimStatus, DemoDB, ReportDraft } from "@/lib/types";
 
 function empty(): DemoDB { return { users: [], reports: [], claims: [], messages: [], notifications: [], activity: [] }; }
@@ -21,10 +22,7 @@ function checkClaimRpc(result: { error: { message: string; code?: string } | nul
 
 // Public item photographs are intentionally shareable. Do not upload ID documents.
 async function storePhoto(client: ReturnType<typeof createSupabaseBrowserClient>, ownerId: string, image: string) {
-  if (!image.startsWith("data:image/")) throw new Error("Unexpected image format");
-  const blob = await (await fetch(image)).blob();
-  if (!(["image/jpeg", "image/png", "image/webp"].includes(blob.type))) throw new Error("Use a JPG, PNG or WebP photo");
-  if (blob.size > 2_097_152) throw new Error("Photo must be under 2 MB after compression");
+  const blob = reportPhotoBlob(image);
   const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
   const path = `${ownerId}/${crypto.randomUUID()}.${extension}`;
   const result = await client.storage.from("report-images").upload(path, blob, { contentType: blob.type, upsert: false });

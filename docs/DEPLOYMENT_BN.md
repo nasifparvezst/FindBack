@@ -38,13 +38,13 @@ APP_ORIGIN=https://YOUR-DEPLOYED-DOMAIN
 3. Supabase Auth-এর Site URL ও allowed redirect URLs-এ ওই deployed origin ব্যবহার করো। `/auth/confirm`, `/auth/callback` এবং `/reset-password` প্রয়োজন অনুযায়ী allow করো; hosted app-এর জন্য শুধু `localhost` configuration যথেষ্ট নয়। Preview-তে Cloud Auth পরীক্ষা করলে সেই preview-এর সঠিক `APP_ORIGIN` ও Supabase allowlist লাগবে; অজানা origin wildcard দিয়ে খুলে দেবে না।
 4. Environment বদলানোর পরে নতুন build/deployment করো। `.env.local` GitHub-এ push করবে না; hosting dashboard-এ environment values বসাবে। Service-role key frontend variables-এ দেবে না।
 5. Environment values বসিয়ে `npm run release:check -- --mode cloud` চালাও। এটি mode, URL, public key ও canonical origin যাচাই করে; Supabase connection, migrations বা email delivery পরীক্ষা করে না।
-6. Public Cloud launch-এর আগে **FINAL AUDIT** অনুরোধ করবে। তারপর আলাদা verified students ও trusted Admin দিয়ে `SECURITY_TEST_CHECKLIST.md`-এর live checks সম্পন্ন করতে হবে। Handover-এ ইতিমধ্যে দুই পক্ষের আলাদা confirmation লাগে; Admin তাদের হয়ে confirm করতে পারে না। SMTP, Storage, Realtime ও deployed cache behavior এখনো live-এ যাচাই হয়নি।
+6. Local **FINAL AUDIT/FIX** সম্পন্ন হয়েছে; ফলাফল `FINAL_AUDIT.md`-তে আছে। Cloud setup-এ এখন সাতটি migration লাগবে। তারপর আলাদা verified students ও trusted Admin দিয়ে `SECURITY_TEST_CHECKLIST.md`-এর live checks সম্পন্ন করতে হবে। Handover-এ দুই পক্ষের আলাদা confirmation লাগে; Admin তাদের হয়ে confirm করতে পারে না। SMTP, Storage, Realtime ও deployed cache behavior এখনো live-এ যাচাই হয়নি।
 
 ## এই phase-এ কী যাচাই হয়েছে
 
 Local targeted security tests এবং Chrome Demo flow পাস হয়েছে। Flow-তে report/photo, matching, claim/chat, guest access ও দুই পক্ষের handover আছে। আবার চালাতে একটি terminal-এ `npm run dev -- --hostname 127.0.0.1 --port 3100`, অন্য terminal-এ `npm run e2e:demo` দেবে। Chrome/Chromium installed থাকতে হবে; ফলাফল `.test-build/e2e/`-তে থাকে। `.github/workflows/release-checks.yml` একই targeted checks হাতে চালানোর workflow দেয়; GitHub-এ এটি এখনো চালানো হয়নি।
 
-Full suite/build/audit এই phase-এ চালানো হয়নি। কোনো hosting account, live database বা deployment পরিবর্তন করা হয়নি।
+পরবর্তী FINAL AUDIT-এ full existing suite, lint/type checks এবং Demo ও isolated Cloud production build পাস হয়েছে; নতুন fixes-এর affected tests-ও পাস করেছে। কোনো hosting account, live database বা deployment পরিবর্তন করা হয়নি।
 
 ## অন্য Node hosting হলে
 

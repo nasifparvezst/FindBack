@@ -50,7 +50,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return <div className="site-root">
     <a className="skip-link" href="#main-content" onClick={() => { setMenuPath(null); main.current?.focus({ preventScroll: true }); }}>Skip to main content</a>
     {DEMO_MODE && <div className="demo-strip"><span className="live-dot"/> <strong>DEMO PREVIEW</strong> &nbsp; Data stays in this browser. Shared database and secure authentication are not connected yet. <Link href="/about">Learn more <ArrowUpRight size={12}/></Link></div>}
-    {syncError && <div className="demo-strip" role="alert" style={{background:"#fff1f0",color:"#9a3412"}}><strong>Connection error:</strong> {syncError} &nbsp; Check Supabase migration, URL and publishable key.</div>}
+    {syncError && <div className="demo-strip" role="alert" style={{background:"#fff1f0",color:"#9a3412"}}><strong>{DEMO_MODE ? "Demo changes not saved:" : "Connection error:"}</strong> {syncError}{!DEMO_MODE && <> &nbsp; Check Supabase migration, URL and publishable key.</>}</div>}
     <header className="site-header">
       <div className="nav-container">
         <Link href="/" className="brand" onClick={() => setMenuPath(null)} aria-label="FindBack home">

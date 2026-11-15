@@ -8,7 +8,7 @@
 - [x] TypeScript and changed-file ESLint checks passed. Explicit Demo environment preflight passed.
 - [ ] Manual GitHub Actions workflow executed on the repository.
 
-These checks use local sample data and stand-in Auth/Storage schemas. They do not establish real Supabase, SMTP, Storage HTTP/MIME enforcement, cross-device Realtime or CDN behavior. The user's production environment is not configured; its release preflight remains pending. Full suite/build/lint and comprehensive review are deferred until the explicit FINAL AUDIT request.
+These checks use local sample data and stand-in Auth/Storage schemas. They do not establish real Supabase, SMTP, Storage HTTP/MIME enforcement, cross-device Realtime or CDN behavior. The user's production environment is not configured; its release preflight remains pending. The requested local FINAL AUDIT/FIX is now recorded in [FINAL_AUDIT.md](FINAL_AUDIT.md), including full-suite/build/lint/type results, new regressions and Cloud production headers.
 
 ## Live Supabase and deployed-domain checks
 
@@ -43,13 +43,13 @@ Run this in a disposable Supabase project with separate confirmed campus account
 
 ## FINAL AUDIT — run only when explicitly requested
 
-- [ ] Review complete architecture and frontend/backend/API/database/auth integrations; prioritize confirmed security, performance and functional issues.
-- [ ] Run the existing full test suite, production build, lint and type checks; fix confirmed issues and retest affected modules.
+- [x] Review complete architecture and frontend/backend/API/database/auth integrations; prioritize confirmed security, performance and functional issues.
+- [x] Run the existing full test suite, production build, lint and type checks; fix confirmed issues and retest affected modules.
 - [ ] Check responsive layouts and major workflows, then physical iOS/Android and NVDA/VoiceOver where available. Record unavailable coverage honestly.
 
 ## Release operations still pending
 
-- [ ] Configure a real Supabase project, apply the six migrations in order, configure Auth templates/redirects and provision Admin through trusted database access.
+- [ ] Configure a real Supabase project, apply the seven migrations in order, configure Auth templates/redirects and provision Admin through trusted database access.
 - [ ] Configure production HTTPS `APP_ORIGIN`, public Supabase URL/key and explicit mode; run `npm run release:check -- --mode cloud` without printing secrets.
 - [ ] Configure SMTP, email abuse limits/rate limits and monitoring; test delivery to confirmed campus accounts.
 - [ ] Verify Storage MIME/size limits through actual HTTP requests, old/replaced object cleanup and cleanup after failed uploads.

@@ -2,7 +2,7 @@
 
 A Next.js 16 + React 19 + TypeScript campus lost-and-found application with report management, Smart Matching, private claims/chat, two-party handover and Admin moderation.
 
-> **Release status:** Phases 1–7 are implemented. Phase 7 adds security headers, safe Auth redirects/session caching, deployment configuration checks and reproducible Demo browser checks. Targeted local checks passed; live Supabase/Auth/Storage/Realtime, email delivery and real-device verification remain pending. A complete audit/build/suite is deferred until the explicit FINAL AUDIT request. The app has not been deployed.
+> **Release status:** Phases 1–7 and the local FINAL AUDIT/FIX are complete. The audit addressed Cloud photo/CSP, Demo storage failures, message insertion integrity, ID Card cleanup and a lint-tooling advisory. Existing tests, affected regressions, lint/type checks and Demo/isolated Cloud builds passed. Live Supabase/Auth/Storage/Realtime, email delivery, real devices and deployment remain pending. See [the audit report](docs/FINAL_AUDIT.md).
 
 ## Requirements
 
@@ -39,6 +39,7 @@ Read `docs/STEP2_SETUP.md`. In summary:
    - `supabase/migrations/202611130001_private_chat_realtime.sql`
    - `supabase/migrations/202611130002_admin_moderation.sql`
    - `supabase/migrations/202611130003_paged_data.sql`
+   - `supabase/migrations/202611150001_message_insert_integrity.sql`
 3. Configure the email confirmation and password recovery templates/redirect URLs.
 4. Copy the Supabase Project URL and publishable key into `.env.local`.
 5. Set `NEXT_PUBLIC_DEMO_MODE=false` and restart the dev server.
@@ -144,6 +145,10 @@ Responses carry CSP, frame/content-type protections and restricted browser permi
 `npm run test:security` covers configuration, redirects, cache headers and focused SQL security boundaries. `npm run e2e:demo` uses installed Chrome/Chromium in a fresh temporary profile against a loopback Demo server; start `npm run dev -- --hostname 127.0.0.1 --port 3100` first. It checks real HTTP headers/Auth failures, report/photo creation, inert report text, matching, claim/chat access and two-party completion. Use `E2E_BASE_URL` to change the local origin or `CHROME_PATH` for another Chrome executable. Results and failure screenshots are ignored under `.test-build/e2e/`. This flow does not verify real Cloud authentication or email.
 
 Set deployment environment values, then run `npm run release:check -- --mode demo` or `--mode cloud`. This checks configuration only and requires an explicit `NEXT_PUBLIC_DEMO_MODE`. `.github/workflows/release-checks.yml` provides a manual GitHub Actions version of the targeted checks; it does not deploy or run the full audit. The workflow has not been executed on GitHub. Remaining release checks are tracked in `docs/SECURITY_TEST_CHECKLIST.md`.
+
+## Final audit and fixes
+
+The final audit adds a seventh migration for message insertion: it serializes inserts with claim closure and assigns authenticated messages server timestamps while preserving participant RLS. The second migration now requires existing ID Card photos to be removed via Storage API/Dashboard before clearing report references. Apply only migrations not already applied; see `docs/STEP2_SETUP.md`.
 
 ## Scope decisions
 

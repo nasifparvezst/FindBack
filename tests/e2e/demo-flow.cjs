@@ -38,7 +38,22 @@ async function main(){
     await account('Campus Admin','admin-1');await browser.go(route);assert.equal(await browser.evaluate("Array.from(document.querySelectorAll('button')).some(button=>/^I (received|handed)/.test(button.textContent.trim()))"),false);
     await account('Ayesha','student-1');await browser.go(route);await browser.click('I received the item');await until(async()=>(await snapshot()).claims.find(claim=>claim.id===claimId).status==='completed','second confirmation');
     db=await snapshot();assert.ok([lost,found].every(id=>db.reports.find(report=>report.id===id).status==='returned'));assert.equal(await browser.evaluate("document.querySelector('.chat-compose')===null"),true);assert.deepEqual(browser.errors,[]);assert.deepEqual(await browser.evaluate('window.__e2eCsp'),[]);
-    passed('owner approval, two-party handover, Admin boundary and closed chat without runtime/CSP violations');result.status='passed';
+    passed('owner approval, two-party handover, Admin boundary and closed chat without runtime/CSP violations');
+    await browser.command('Emulation.setDeviceMetricsOverride',{width:320,height:800,deviceScaleFactor:1,mobile:false});
+    for(const path of ['/','/browse','/report/lost',route]){await browser.go(path);assert.ok(await browser.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),'320px layout: '+path);}
+    await browser.evaluate("document.querySelector('.mobile-toggle').click()");await until(()=>browser.evaluate("document.activeElement?.closest('#mobile-navigation')!==null"),'mobile menu focus');
+    await browser.command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await browser.command('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    assert.ok(await browser.evaluate("document.activeElement===document.querySelector('.mobile-toggle')&&document.querySelector('.mobile-toggle').getAttribute('aria-expanded')==='false'"));
+    await browser.go('/report/lost');await browser.click('Submit Lost Report');await until(()=>browser.evaluate("document.activeElement===document.querySelector('.error-summary')"),'invalid report feedback focus');
+    await account('Campus Admin','admin-1');await browser.go('/admin');assert.ok(await browser.evaluate('document.documentElement.scrollWidth<=innerWidth+1'));
+    await browser.go('/login');await browser.click('Browse as a guest');await browser.go('/register');await browser.field('#name','Audit Student');await browser.field('#email','audit-demo@seu.edu.bd');await browser.click('Create Demo Profile');
+    await until(async()=>(await snapshot()).users.some(user=>user.email==='audit-demo@seu.edu.bd'),'Demo registration');assert.equal((await snapshot()).users.find(user=>user.email==='audit-demo@seu.edu.bd').role,'student');await browser.go('/admin');assert.ok(await browser.evaluate("document.body.textContent.includes('Administrator access required')"));
+    passed('320px layouts, keyboard menu/error focus, Demo registration and new-user Admin denial');
+    const quota=await browser.command('Page.addScriptToEvaluateOnNewDocument',{source:"window.__e2eSetItem=Storage.prototype.setItem;Storage.prototype.setItem=function(){throw new DOMException('Test quota reached','QuotaExceededError')}"});
+    await browser.go('/login');await browser.click('Browse as a guest');await until(()=>browser.evaluate("document.body.textContent.includes('Demo changes not saved:')"),'storage quota feedback');assert.ok(await browser.evaluate("!!document.querySelector('.site-root')"));
+    await browser.command('Page.removeScriptToEvaluateOnNewDocument',{identifier:quota.identifier});await browser.evaluate('Storage.prototype.setItem=window.__e2eSetItem');await browser.go('/login');await browser.evaluate("Array.from(document.querySelectorAll('.demo-account')).find(e=>e.textContent.includes('Ayesha')).click()");
+    await until(()=>browser.evaluate("!document.body.textContent.includes('Demo changes not saved:')&&localStorage.getItem('findback_v2_demo_user')==='student-1'"),'storage recovery');
+    assert.deepEqual(browser.errors,[]);assert.deepEqual(await browser.evaluate('window.__e2eCsp'),[]);passed('storage quota failure keeps the app usable and saving recovers after storage is available');result.status='passed';
   }catch(error){result.status='failed';result.error=error.message;await browser.screenshot('.test-build/e2e/demo-failure.png').catch(()=>{});throw error;}finally{result.finishedAt=new Date().toISOString();record();await browser.close();}
 }
 main().catch(error=>{console.error(error.stack);process.exitCode=1;});
