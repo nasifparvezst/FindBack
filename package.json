@@ -19,7 +19,9 @@
     "test:ui": "tsc --target ES2022 --module commonjs --outDir .test-build src/lib/types.ts src/lib/data-pages.ts src/lib/demo-session.ts src/lib/validation.ts && node --test tests/usability.test.cjs",
     "test:security": "tsc --target ES2022 --module commonjs --outDir .test-build src/lib/deployment.ts src/lib/http-security.ts src/lib/auth-flow.ts src/lib/report-photo.ts && node --test --test-name-pattern=security tests/security.test.cjs tests/report-photo.test.cjs tests/claims-sql.test.cjs",
     "e2e:demo": "node tests/e2e/demo-flow.cjs",
-    "release:check": "tsc --target ES2022 --module commonjs --outDir .test-build src/lib/deployment.ts && node scripts/release-check.cjs"
+    "release:check": "tsc --target ES2022 --module commonjs --outDir .test-build src/lib/deployment.ts && node scripts/release-check.cjs",
+    "cloud:check": "tsc --target ES2022 --module commonjs --outDir .test-build src/lib/deployment.ts && node scripts/cloud-check.cjs",
+    "test:cloud": "tsc --target ES2022 --module commonjs --outDir .test-build src/lib/deployment.ts && node --test tests/cloud-setup.test.cjs"
   },
   "dependencies": {
     "next": "^16.0.0",

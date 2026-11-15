@@ -87,6 +87,8 @@ npm run dev
 5. Open `http://localhost:3000/register` and register with a real `@seu.edu.bd` email address.
 6. Confirm the email, then sign in.
 
+With the Cloud variables configured and migrations applied, run `npm run cloud:check`. It uses only the public key to inspect email sign-up/confirmation settings and the anonymous bootstrap report page, rejecting unexpected private fields. It creates no users or records and prints no key values. The check uses the same development environment files as `npm run dev`; `npm run release:check -- --mode cloud` remains the separate production configuration check. This smoke check cannot verify all seven migrations, SMTP delivery, all RLS policies, Storage or Realtime; complete the live checks below. The Auth settings fields follow [Supabase Auth's settings response](https://github.com/supabase/auth/blob/master/internal/api/settings.go).
+
 Never use a service-role/secret key in a `NEXT_PUBLIC_*` variable or frontend code. Never share `.env.local`.
 
 ## 6. Grant an administrator
