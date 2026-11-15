@@ -2,7 +2,7 @@
 
 A Next.js 16 + React 19 + TypeScript campus lost-and-found application with report management, Smart Matching, private claims/chat, two-party handover and Admin moderation.
 
-> **Release status:** Phases 1–7 and the local FINAL AUDIT/FIX are complete. The audit addressed Cloud photo/CSP, Demo storage failures, message insertion integrity, ID Card cleanup and a lint-tooling advisory. Existing tests, affected regressions, lint/type checks and Demo/isolated Cloud builds passed. Live Supabase/Auth/Storage/Realtime, email delivery, real devices and deployment remain pending. See [the audit report](docs/FINAL_AUDIT.md).
+> **Release status:** Phases 1–7 and the local FINAL AUDIT/FIX are complete. The real Supabase project now has all seven migrations, and live anonymous API/SQL access checks passed. Real account verification, signed-in Storage/Realtime, email delivery, real devices and deployment remain pending. See [the audit report](docs/FINAL_AUDIT.md) and [live Cloud status](docs/CLOUD_SETUP_STATUS.md).
 
 ## Requirements
 

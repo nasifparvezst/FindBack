@@ -58,7 +58,8 @@ export function CloudRegister() {
     try {
       const { error: authError } = await createSupabaseBrowserClient().auth.signUp({
         email: email.trim().toLowerCase(), password,
-        options: { data: { full_name: name.trim() }, emailRedirectTo: `${window.location.origin}/auth/confirm` },
+        // Default confirmation emails return a PKCE code; custom token-hash templates use /auth/confirm.
+        options: { data: { full_name: name.trim() }, emailRedirectTo: `${window.location.origin}/auth/callback` },
       });
       if (authError) throw authError;
       setSuccess(true);

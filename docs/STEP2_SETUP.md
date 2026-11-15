@@ -2,6 +2,8 @@
 
 You do not need to install PostgreSQL locally. Supabase hosts the database in the cloud.
 
+For the existing FindBack project, check [CLOUD_SETUP_STATUS.md](CLOUD_SETUP_STATUS.md) first: its seven migrations have already been applied. The instructions below also cover a fresh installation; do not rerun completed migrations.
+
 ## 1. Prepare the project
 
 1. Install Node.js 22 or later (required by the locked Supabase client).
@@ -63,6 +65,8 @@ The seventh migration adds a before-insert message guard. It locks the claim aga
 ```html
 <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery">Reset your FindBack password</a>
 ```
+
+The app also supports default confirmation templates by requesting `/auth/callback` for the PKCE code exchange. Open that default link in the browser where signup began. The token-hash templates above exchange the token server-side and support another browser/device. Keep all three redirect paths configured.
 
 Supabase's default email service has sending limits. Configure an approved SMTP provider before inviting many students.
 
