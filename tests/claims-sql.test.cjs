@@ -45,6 +45,7 @@ before(async () => {
   await db.exec(migration('202611130003_paged_data.sql'));
   await db.exec(migration('202611150001_message_insert_integrity.sql'));
   await db.exec(migration('202611160001_admin_account_management.sql'));
+  await db.exec(migration('202611160002_admin_auth_transaction.sql'));
 });
 beforeEach(async () => {
   await db.exec('reset role; truncate auth.users cascade');
@@ -144,6 +145,41 @@ test('accounts SQL: removed non-campus Admin loses member access; last active Ad
 test('accounts SQL: existing account email cannot be taken over or have its password replaced through provisioning', async () => {
   await assert.rejects(reserveAdmin('student0@seu.edu.bd'), /already has an account/);
   assert.equal((await as(owner, 'select public.is_admin() value'))[0].value, false);
+});
+
+test('accounts SQL: real Auth insert-then-confirm transaction provisions an external Admin at commit', async () => {
+  const reservation=await reserveAdmin('transaction-admin@example.com');
+  await db.exec('begin');
+  try {
+    // Auth creates an initially unconfirmed user with provider metadata, then adds
+    // trusted app metadata and confirms email in later updates of the same transaction.
+    await db.query("insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values($1,$2,'{\"provider\":\"email\"}','{\"full_name\":\"New Admin\"}')",[reservation.user_id,reservation.email]);
+    assert.equal((await query('select count(*)::int n from public.admin_members where user_id=$1',[reservation.user_id]))[0].n,0);
+    await db.query("update auth.users set raw_app_meta_data=raw_app_meta_data||'{\"findback_admin_provision\":true}' where id=$1",[reservation.user_id]);
+    await db.query('update auth.users set email_confirmed_at=now() where id=$1',[reservation.user_id]);
+    await db.exec('commit');
+  } catch(error) { await db.exec('rollback'); throw error; }
+  assert.equal((await as(reservation.user_id,'select public.is_active_member() active,public.is_admin() admin'))[0].admin,true);
+  // Subsequent Auth updates (including after role removal) must not re-provision the role.
+  await removeAdmin(reservation.user_id);
+  await db.query('update auth.users set email_confirmed_at=now() where id=$1',[reservation.user_id]);
+  assert.equal((await as(reservation.user_id,'select public.is_active_member() active,public.is_admin() admin'))[0].active,false);
+});
+test('accounts SQL: unconfirmed or expired final Auth rows roll back the entire account transaction', async () => {
+  for (const expire of [false,true]) {
+    const reservation=await reserveAdmin(expire?'expire-at-commit@example.com':'unconfirmed@example.com');
+    await db.exec('begin');
+    await db.query("insert into auth.users(id,email,raw_app_meta_data) values($1,$2,'{\"provider\":\"email\"}')",[reservation.user_id,reservation.email]);
+    if (expire) {
+      await db.query('update auth.users set email_confirmed_at=now() where id=$1',[reservation.user_id]);
+      await db.query("update findback_private.admin_provisions set expires_at=now()-interval '1 second' where user_id=$1",[reservation.user_id]);
+    }
+    await assert.rejects(db.exec('commit'),expire?/expired/:/confirmed account/);
+    await db.exec('rollback');
+    assert.equal((await query('select count(*)::int n from auth.users where id=$1',[reservation.user_id]))[0].n,0);
+    assert.equal((await query('select count(*)::int n from public.profiles where id=$1',[reservation.user_id]))[0].n,0);
+    await as(admin,'select public.cancel_admin_reservation($1)',[reservation.user_id]);
+  }
 });
 test('accounts SQL: one-time trusted bootstrap creates initial Admin and cannot restore it after removal', async () => {
   await db.exec('truncate auth.users cascade; truncate findback_private.admin_provisions; update findback_private.admin_bootstrap set initialized=false');

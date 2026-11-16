@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { adminDraft, adminSecret, boundedJson, provisionAdmin, requireActiveAdmin, requireSameOrigin, adminRpc } = require('../.test-build/admin-accounts.js');
+const { adminDraft, adminSecret, boundedJson, provisionAdmin, requireActiveAdmin, requireSameOrigin, adminRpc, adminAuthFailure } = require('../.test-build/admin-accounts.js');
 const { remembersSession, sessionCookieOptions } = require('../.test-build/session-preference.js');
 const id = '00000000-0000-0000-0000-000000000099';
 const draft = { name: 'New Admin', email: 'admin@example.com', password: 'unique-admin-password' };
@@ -30,6 +30,14 @@ test('accounts: JSON body limits apply even when Content-Length is omitted', asy
 test('accounts: both authoritative role and active membership are required', async () => {
   for (const inactive of ['is_admin', 'is_active_member']) await assert.rejects(requireActiveAdmin(rpc(name => name !== inactive)), error => error.status === 403);
   await requireActiveAdmin(rpc(() => true));
+});
+test('accounts: Auth rejection codes produce actionable safe errors, without imposing a campus domain on Admins', () => {
+  assert.equal(adminAuthFailure('weak_password').status,400);
+  assert.match(adminAuthFailure('email_address_invalid').message,/any valid email domain/);
+  assert.equal(adminAuthFailure('email_exists').status,409);
+  assert.equal(adminAuthFailure('user_already_exists').status,409);
+  assert.match(adminAuthFailure('bad_jwt',401).message,/server-only secret/);
+  assert.equal(adminAuthFailure('unexpected_failure',500).status,503);
 });
 test('accounts: reservation binds creation to its server-generated ID and verifies membership', async () => {
   const calls = [];

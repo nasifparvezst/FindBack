@@ -27,7 +27,7 @@ async function run(request: Request, operation: "list" | "create" | "remove") {
     const result = await provisionAdmin(client, service, draft, async (id, input) => {
       const { data, error } = await service.auth.admin.createUser({ id, email: input.email, password: input.password,
         email_confirm: true, user_metadata: { full_name: input.name }, app_metadata: { findback_admin_provision: true } });
-      return { id: data.user?.id, error: Boolean(error) };
+      return { id: data.user?.id, error: Boolean(error), code: error?.code, status: error?.status };
     });
     return json(result, 201);
   } catch (error) {

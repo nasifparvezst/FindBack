@@ -64,12 +64,19 @@ export async function requireActiveAdmin(client: RpcClient) {
   // Neither user-editable metadata nor an ID supplied by the browser grants a role.
   if (await adminRpc(client, "is_admin") !== true || await adminRpc(client, "is_active_member") !== true) throw new AdminAccountError(403, "Active Admin access is required.");
 }
-export async function provisionAdmin(client: RpcClient, service: RpcClient, draft: AdminDraft, createUser: (id: string, draft: AdminDraft) => Promise<{ id?: string; error: boolean }>) {
+export function adminAuthFailure(code?: string, status?: number): AdminAccountError {
+  if (code === "weak_password") return new AdminAccountError(400, "This password does not meet the Supabase password policy. Use a stronger password.");
+  if (code === "email_address_invalid" || code === "validation_failed") return new AdminAccountError(400, "Supabase could not accept the account details. Check the email and password. Admins can use any valid email domain.");
+  if (code === "email_exists" || code === "user_already_exists") return new AdminAccountError(409, "This email already has an account. Use a new email for a new Admin.");
+  if (status === 401 || status === 403) return new AdminAccountError(503, "Supabase denied Admin creation. Check the server-only secret key configuration.");
+  return new AdminAccountError(503, "Account creation could not be confirmed. Check the Admin list before retrying; an existing account will never have its password replaced here.");
+}
+export async function provisionAdmin(client: RpcClient, service: RpcClient, draft: AdminDraft, createUser: (id: string, draft: AdminDraft) => Promise<{ id?: string; error: boolean; code?: string; status?: number }>) {
   const reservation = await adminRpc(client, "reserve_admin_account", { p_email: draft.email }) as { user_id?: unknown } | null;
   const id = accountId(reservation?.user_id);
   try {
     const result = await createUser(id, draft);
-    if (result.error || result.id !== id) throw new AdminAccountError(503, "Account creation could not be confirmed. Check the Admin list before retrying; an existing account will never have its password replaced here.");
+    if (result.error || result.id !== id) throw adminAuthFailure(result.code, result.status);
     if (await adminRpc(service, "admin_account_provisioned", { p_user_id: id }) !== true) throw new AdminAccountError(409, "The account was created but its Admin access has changed. Refresh the Admin list.");
     return { id };
   } finally {
