@@ -1,14 +1,14 @@
 # FindBack অনলাইনে চালানোর নিয়ম
 
-বর্তমান FindBack-এ real Supabase Cloud Mode ও নয়টি migration প্রস্তুত আছে। নিজের ব্যবহারের pilot deployment-এর জন্য নিচের **real Supabase Cloud Mode** settings ব্যবহার করবে। Google provider চালু হয়েছে; campus account-এর সম্পূর্ণ Google login পরীক্ষা এবং Vercel deployment বাকি।
+বর্তমান FindBack real Supabase Cloud Mode-এ Vercel-এ live: **https://findback-pi.vercel.app**। নয়টি migration apply হয়েছে এবং ব্যবহারকারী live website-এ campus Google login সফল বলে নিশ্চিত করেছেন। Vercel project হলো `nasifparvezst/findback`; deployment source branch `codex/baseline-audit`।
 
 ## GitHub push, localhost এবং live website
 
-`git push` code GitHub-এ রাখে। `npm run dev` তোমার কম্পিউটারে app চালায়। Public URL-এ app চালাতে hosting-এ আলাদা deployment দরকার। এই project এখনো deploy করা হয়নি, তাই live update না দেখা deployment না হওয়ার ফল।
+`git push` code GitHub-এ রাখে। `npm run dev` তোমার কম্পিউটারে app চালায়। বর্তমান production deployment Vercel CLI দিয়ে করা হয়েছে; automatic Git deployment এখনো connect করা নেই। নতুন code website-এ দিতে একই Vercel project-এ আবার deploy করতে হবে। `main`-এ merge করা হয়নি।
 
 বর্তমান app-এ dynamic item/claim routes, Auth callbacks, cookies ও session proxy আছে। এই সংস্করণের জন্য Next.js সমর্থিত Node hosting ব্যবহার করবে। শুধু source file GitHub Pages-এ দিলেই app চলবে না; static export-এ প্রয়োজনীয় server features সমর্থিত নয়। [Next.js deployment guide](https://nextjs.org/docs/app/getting-started/deploying), [static export limitations](https://nextjs.org/docs/app/guides/static-exports#unsupported-features)।
 
-## প্রথমে Demo website
+## Demo website চালানোর বিকল্প
 
 Vercel একটি সমর্থিত বিকল্প। [Vercel-এর Next.js নির্দেশনা](https://vercel.com/docs/frameworks/full-stack/nextjs)।
 
@@ -23,7 +23,7 @@ Deployment সফল হলে generated URL খুলে Home, Browse, Smart Ma
 
 Demo website-এ data প্রত্যেক browser-এর local storage-এ থাকে। দুই ব্যক্তি আলাদা device থেকে একই shared database দেখবে না। Public URL পাওয়া আর real multi-user Cloud Mode প্রস্তুত হওয়া আলাদা ধাপ।
 
-## পরে real Supabase Cloud Mode
+## Real Supabase Cloud Mode
 
 1. `STEP2_SETUP.md` অনুসারে Supabase project, migrations, email confirmation এবং Auth templates প্রস্তুত করো। Migration-এর প্রভাব পর্যালোচনা করে তারপর প্রয়োগ করবে।
 2. সংশ্লিষ্ট hosting environment-এ এগুলো দেবে:
@@ -38,6 +38,8 @@ APP_ORIGIN=https://YOUR-DEPLOYED-DOMAIN
 
 `APP_ORIGIN` server-only; `NEXT_PUBLIC_` prefix দেবে না। শুধু HTTPS origin দেবে, কোনো path/query/trailing credential নয়। Production Cloud build-এ এটি বাধ্যতামূলক। Supabase URL ও publishable key-ও যাচাই হয়; secret/service-role key দিলে build বন্ধ হবে। Development-এ HTTP localhost চলবে।
 
+`SUPABASE_SECRET_KEY`-ও server-only এবং Vercel-এ Secret হিসেবে রাখা হয়েছে; Admin account তৈরি করতে এটি লাগে। বর্তমান production `APP_ORIGIN` হলো `https://findback-pi.vercel.app`। Local `.env.local` ও `.vercel` project-link data Git-এ যাবে না; `.vercelignore` local environment এবং generated/test files-ও upload থেকে বাদ দেয়।
+
 3. Supabase Auth-এর Site URL ও allowed redirect URLs-এ ওই deployed origin ব্যবহার করো। `/auth/confirm`, `/auth/callback` এবং `/reset-password` প্রয়োজন অনুযায়ী allow করো; hosted app-এর জন্য শুধু `localhost` configuration যথেষ্ট নয়। Preview-তে Cloud Auth পরীক্ষা করলে সেই preview-এর সঠিক `APP_ORIGIN` ও Supabase allowlist লাগবে; অজানা origin wildcard দিয়ে খুলে দেবে না।
 4. Environment বদলানোর পরে নতুন build/deployment করো। `.env.local` GitHub-এ push করবে না; hosting dashboard-এ environment values বসাবে। Service-role key frontend variables-এ দেবে না।
 5. Environment values বসিয়ে `npm run release:check -- --mode cloud` চালাও। এটি mode, URL, public key ও canonical origin যাচাই করে; Supabase connection, migrations বা email delivery পরীক্ষা করে না।
@@ -47,7 +49,7 @@ APP_ORIGIN=https://YOUR-DEPLOYED-DOMAIN
 
 Local targeted security tests এবং Chrome Demo flow পাস হয়েছে। Flow-তে report/photo, matching, claim/chat, guest access ও দুই পক্ষের handover আছে। আবার চালাতে একটি terminal-এ `npm run dev -- --hostname 127.0.0.1 --port 3100`, অন্য terminal-এ `npm run e2e:demo` দেবে। Chrome/Chromium installed থাকতে হবে; ফলাফল `.test-build/e2e/`-তে থাকে। `.github/workflows/release-checks.yml` একই targeted checks হাতে চালানোর workflow দেয়; GitHub-এ এটি এখনো চালানো হয়নি।
 
-পরবর্তী FINAL AUDIT-এ full existing suite, lint/type checks এবং Demo ও isolated Cloud production build পাস হয়েছে; নতুন fixes-এর affected tests-ও পাস করেছে। কোনো hosting account, live database বা deployment পরিবর্তন করা হয়নি।
+আগের FINAL AUDIT-এ full existing suite, lint/type checks এবং Demo ও isolated Cloud production build পাস হয়েছে; পরের fixes-এর affected tests-ও পাস করেছে। সর্বশেষ real Cloud setup ও Vercel production build/API/browser checks-এর ফল `CLOUD_SETUP_STATUS.md`-তে আছে।
 
 ## অন্য Node hosting হলে
 
@@ -59,4 +61,4 @@ npm run build
 npm start
 ```
 
-Hosting-এর দেওয়া `PORT` অনুযায়ী process চালাও এবং public domain ওই service-এ যুক্ত করো। `npm run dev` development-এর জন্য। কোনো hosting account বা live deployment এই guide তৈরির সময় পরিবর্তন করা হয়নি।
+Hosting-এর দেওয়া `PORT` অনুযায়ী process চালাও এবং public domain ওই service-এ যুক্ত করো। `npm run dev` development-এর জন্য।
