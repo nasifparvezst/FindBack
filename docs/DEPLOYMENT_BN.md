@@ -1,5 +1,7 @@
 # FindBack অনলাইনে চালানোর নিয়ম
 
+বর্তমান FindBack-এ real Supabase Cloud Mode ও নয়টি migration প্রস্তুত আছে। নিজের ব্যবহারের pilot deployment-এর জন্য নিচের **real Supabase Cloud Mode** settings ব্যবহার করবে। Google provider চালু হয়েছে; campus account-এর সম্পূর্ণ Google login পরীক্ষা এবং Vercel deployment বাকি।
+
 ## GitHub push, localhost এবং live website
 
 `git push` code GitHub-এ রাখে। `npm run dev` তোমার কম্পিউটারে app চালায়। Public URL-এ app চালাতে hosting-এ আলাদা deployment দরকার। এই project এখনো deploy করা হয়নি, তাই live update না দেখা deployment না হওয়ার ফল।
@@ -30,6 +32,7 @@ Demo website-এ data প্রত্যেক browser-এর local storage-এ 
 NEXT_PUBLIC_DEMO_MODE=false
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR-PUBLISHABLE-KEY
+SUPABASE_SECRET_KEY=YOUR-SERVER-ONLY-SECRET-KEY
 APP_ORIGIN=https://YOUR-DEPLOYED-DOMAIN
 ```
 
@@ -38,7 +41,7 @@ APP_ORIGIN=https://YOUR-DEPLOYED-DOMAIN
 3. Supabase Auth-এর Site URL ও allowed redirect URLs-এ ওই deployed origin ব্যবহার করো। `/auth/confirm`, `/auth/callback` এবং `/reset-password` প্রয়োজন অনুযায়ী allow করো; hosted app-এর জন্য শুধু `localhost` configuration যথেষ্ট নয়। Preview-তে Cloud Auth পরীক্ষা করলে সেই preview-এর সঠিক `APP_ORIGIN` ও Supabase allowlist লাগবে; অজানা origin wildcard দিয়ে খুলে দেবে না।
 4. Environment বদলানোর পরে নতুন build/deployment করো। `.env.local` GitHub-এ push করবে না; hosting dashboard-এ environment values বসাবে। Service-role key frontend variables-এ দেবে না।
 5. Environment values বসিয়ে `npm run release:check -- --mode cloud` চালাও। এটি mode, URL, public key ও canonical origin যাচাই করে; Supabase connection, migrations বা email delivery পরীক্ষা করে না।
-6. Local **FINAL AUDIT/FIX** সম্পন্ন হয়েছে; ফলাফল `FINAL_AUDIT.md`-তে আছে। Cloud setup-এ এখন সাতটি migration লাগবে। তারপর আলাদা verified students ও trusted Admin দিয়ে `SECURITY_TEST_CHECKLIST.md`-এর live checks সম্পন্ন করতে হবে। Handover-এ দুই পক্ষের আলাদা confirmation লাগে; Admin তাদের হয়ে confirm করতে পারে না। SMTP, Storage, Realtime ও deployed cache behavior এখনো live-এ যাচাই হয়নি।
+6. আগের local **FINAL AUDIT/FIX**-এর ফলাফল `FINAL_AUDIT.md`-তে আছে। বর্তমান Cloud setup-এর নয়টি migration apply হয়েছে; remote version mapping `CLOUD_SETUP_STATUS.md`-তে আছে। একই migration আবার চালাবে না। Campus signup/sign-in এবং real Admin API যাচাই হয়েছে। Pilot deployment-এর সময় Google login, ছবি upload, chat ও notification-এর প্রয়োজনীয় live checks করবে; নতুন full audit শুধু `FINAL AUDIT` নির্দেশ পেলে হবে। Handover-এ দুই পক্ষের আলাদা confirmation লাগে; Admin তাদের হয়ে confirm করতে পারে না।
 
 ## এই phase-এ কী যাচাই হয়েছে
 

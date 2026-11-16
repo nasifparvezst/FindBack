@@ -1,0 +1,13 @@
+# Remote builds receive configuration through Vercel environment settings.
+.env*
+.git/
+.next/
+.vercel/
+.test-build/
+.codex/
+.agents/
+.aws/
+node_modules/
+*.log
+*.tsbuildinfo
+*.zip
