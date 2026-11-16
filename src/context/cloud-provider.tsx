@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { usePathname } from "next/navigation";
 import { Context, type AppStore } from "@/context/app-store";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { validateReport } from "@/lib/validation";
+import { validEmail, validateReport } from "@/lib/validation";
 import { createRefreshQueue, type MessageCursor } from "@/lib/chat";
 import { watchPrivateUpdates } from "@/lib/realtime";
 import { moderationReason, validateAdminDates } from "@/lib/moderation";
@@ -110,7 +110,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     return () => { invalidateSession(); subscription.unsubscribe(); clearTimeout(refreshTimer); clearInterval(interval); document.removeEventListener("visibilitychange", onFocus); window.removeEventListener("online", scheduleRefresh); };
   }, [client, refresh, load, invalidateSession]);
 
-  const user = useMemo(() => db.users.find(u => u.id === userId && !u.suspended) || null, [db.users, userId]);
+  const user = useMemo(() => db.users.find(u => u.id === userId && !u.suspended && (u.role === "admin" || validEmail(authEmail || u.email))) || null, [db.users, userId, authEmail]);
   const isAdmin = user?.role === "admin";
   const activeUserId = user?.id;
   useEffect(() => {
@@ -213,7 +213,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   const value: AppStore = {
     ready: ready && contextPath === path, db, user: user ? { ...user, email: authEmail || user.email } : null,
     queryPage, dataRevision, dataStats,
-    isAdmin, syncError, ...summary,
+    isAdmin, hasSession: Boolean(userId), refreshSession: refresh, syncError, ...summary,
     switchUser: notInCloud, registerDemo: notInCloud,
     addReport, editReport, removeReport, requestClaim, updateClaim, sendMessage, confirmHandover, manageClaim,
     markNotificationRead, markAllRead, markClaimMessagesRead, suspendUser, flagReport, moderateReport, dismissReportFlag, getAdminAnalytics, resetDemo: notInCloud,

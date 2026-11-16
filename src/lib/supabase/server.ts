@@ -1,6 +1,7 @@
 // Supabase SSR server client; used by confirmation and PKCE callback routes.
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { REMEMBER_COOKIE, remembersSession, sessionCookieOptions } from "@/lib/session-preference";
 
 export async function createSupabaseServerClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -13,7 +14,8 @@ export async function createSupabaseServerClient() {
       setAll(values) {
         // These clients are created in Route Handlers, where cookie writes are supported.
         // A failed write must fail the Auth flow rather than report a session that was not saved.
-        values.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
+        const remember = remembersSession(cookieStore.get(REMEMBER_COOKIE)?.value);
+        values.forEach(({ name, value, options }) => cookieStore.set(name, value, sessionCookieOptions(options, remember)));
       },
     },
   });

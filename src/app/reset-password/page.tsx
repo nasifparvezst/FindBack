@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { DEMO_MODE } from "@/context/app-store";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { PasswordInput } from "@/components/password-input";
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
@@ -30,6 +31,6 @@ export default function ResetPasswordPage() {
     finally { setBusy(false); }
   };
   return <section className="auth-wrap"><div className="panel auth-panel"><span className="eyebrow">Secure recovery</span><h1>Choose a new password.</h1>
-    {done ? <div className="alert-banner" role="status">Password updated. <Link href="/login" className="text-link">Sign in again</Link>.</div> : <form onSubmit={submit}><div className="field"><label htmlFor="password">New password</label><input id="password" type="password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)}/></div><div className="field" style={{marginTop:14}}><label htmlFor="confirm">Confirm password</label><input id="confirm" type="password" required minLength={8} value={confirm} onChange={e => setConfirm(e.target.value)}/></div>{error&&<div className="form-error" role="alert">{error}</div>}<button disabled={busy} type="submit" className="btn btn-primary btn-wide" style={{marginTop:18}}>{busy ? "Saving..." : "Update password"}</button></form>}
+    {done ? <div className="alert-banner" role="status">Password updated. <Link href="/login" className="text-link">Sign in again</Link>.</div> : <form onSubmit={submit}><div className="field"><label htmlFor="password">New password</label><PasswordInput id="password" autoComplete="new-password" required minLength={8} value={password} onChange={e => setPassword(e.target.value)}/></div><div className="field" style={{marginTop:14}}><label htmlFor="confirm">Confirm password</label><PasswordInput id="confirm" visibilityLabel="confirmation password" autoComplete="new-password" required minLength={8} value={confirm} onChange={e => setConfirm(e.target.value)}/></div>{error&&<div className="form-error" role="alert">{error}</div>}<button disabled={busy} type="submit" className="btn btn-primary btn-wide" style={{marginTop:18}}>{busy ? "Saving..." : "Update password"}</button></form>}
   </div></section>;
 }

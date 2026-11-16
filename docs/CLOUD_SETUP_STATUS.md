@@ -1,6 +1,6 @@
 # Live Cloud setup status
 
-Updated 15 November 2026 (Asia/Omsk). Project: `pxdzaapokjtocnplqmmd`.
+Updated 16 November 2026 (Asia/Omsk). Project: `pxdzaapokjtocnplqmmd`.
 
 ## Completed
 
@@ -39,9 +39,20 @@ MCP assigned these remote versions; source SQL files retain their original names
 
 Two warning categories remain for intentional API functions: anonymous callers can execute the guarded hidden-report predicate/public aggregates, and authenticated callers can execute guarded SECURITY DEFINER RPCs. These functions use fixed search paths and explicit caller checks; the tested private boundaries remain denied. No RLS-disabled application table was found. Review context before changing these grants, since the app and policies depend on them. [Anonymous function advisory](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable), [authenticated function advisory](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable).
 
+## Admin and sign-in update (local implementation)
+
+- New migration: `202611160001_admin_account_management.sql`. **Not yet applied to the live database**: this session does not expose the configured Supabase MCP tools. Reconnect/reload the project-scoped MCP tools and apply only this new migration; preserve the ledger above.
+- `/admin/accounts` lets active Admins create confirmed password accounts with a new email (campus or external), list up to five equal Admins and remove their roles. Existing email accounts/passwords cannot be replaced through this form. Role removal keeps the account, reports and messages; non-campus accounts lose member access when their Admin role is removed. The last active Admin is protected.
+- The database allocates private, expiring UUID-bound slots before Auth creation and serializes membership changes. User-editable metadata cannot grant Admin access. Both existing members and pending slots count toward the limit of five.
+- Add `SUPABASE_SECRET_KEY` and a 12+ character `BOOTSTRAP_ADMIN_PASSWORD` to the ignored `.env.local`; `BOOTSTRAP_ADMIN_EMAIL` is already set locally to the requested initial Admin email. After migration, run `npm run admin:bootstrap`. This creates the initial account or promotes a verified existing account. Re-running this explicit command sets that existing Admin's configured password; it does not run at startup and cannot restore a removed initial Admin. Never use a `NEXT_PUBLIC_*` secret key. [Supabase key settings](https://supabase.com/docs/guides/getting-started/api-keys).
+- Password fields support visibility toggles and browser password managers. Remember me controls persistent versus browser-session Auth/PKCE cookies, including server refreshes. The application never saves plaintext passwords in browser storage.
+- Continue with Google uses PKCE and the existing `/auth/callback`; student email restriction remains enforced in the database. The Google `hd` hint improves account selection and is not the access-control check. If the provider is disabled, the form offers email/password rather than navigating to a provider error.
+- Google activation still requires a Google OAuth Web client ID/secret configured in Supabase Authentication → Sign In / Providers → Google. Set Google's authorized redirect URI to `https://pxdzaapokjtocnplqmmd.supabase.co/auth/v1/callback` and include the application `/auth/callback` in Supabase's allowed redirects. Configure the credentials in the provider dashboard, never in frontend source. [Google provider setup](https://supabase.com/docs/guides/auth/social-login/auth-google).
+- Local validation: 57 focused unit/SQL tests, TypeScript and changed-file lint passed. An isolated Chrome check intercepted Auth/Admin responses and verified password controls, cookie durations, campus Google request, mobile create/five-slot/remove UI. This does not verify real Google OAuth, real Admin creation or simultaneous live-database transactions.
+
 ## Still pending
 
-- The two requested real accounts must sign up with their own passwords and verify their inbox links. The trusted Admin membership will be granted only after email verification; signup metadata cannot grant it. No permanent test/Admin account has been created.
+- The user reports successful campus Student signup/sign-in. Activate the initial Admin using the server-side setup above; no new permanent Admin account has been created by this update.
 - Confirm Auth Site URL/allowed redirects and email templates in the Dashboard using [STEP2_SETUP.md](STEP2_SETUP.md). Default PKCE email links must open in the signup browser; the custom token-hash template supports confirmation from another browser.
 - Configure/verify SMTP if the built-in mail service cannot send to the intended campus accounts; inbox delivery/password recovery are not verified. [Supabase SMTP guide](https://supabase.com/docs/guides/auth/auth-smtp).
 - Check real signed-in Storage uploads, two-user Realtime, unread/reconnect and concurrent transactions after those accounts are available.

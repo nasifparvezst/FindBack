@@ -12,6 +12,8 @@ export type AppStore = {
   db: DemoDB;
   user: UserProfile | null;
   isAdmin: boolean;
+  hasSession?: boolean;
+  refreshSession?: () => Promise<void>;
   syncError?: string;
   queryPage?: QueryPage;
   dataRevision?: number;

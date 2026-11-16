@@ -24,9 +24,9 @@ before(async () => {
   db = new PGlite();
   // Disposable stand-ins for Supabase-managed Auth/Storage; application migrations are unmodified.
   await db.exec(`
-    create role anon; create role authenticated;
+    create role anon; create role authenticated; create role service_role bypassrls;
     create schema auth; create schema storage;
-    create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz,raw_user_meta_data jsonb default '{}');
+    create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz,raw_user_meta_data jsonb default '{}',raw_app_meta_data jsonb default '{}');
     create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
     grant usage on schema auth to anon,authenticated;
     create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
@@ -44,9 +44,11 @@ before(async () => {
   await db.exec(migration('202611130002_admin_moderation.sql'));
   await db.exec(migration('202611130003_paged_data.sql'));
   await db.exec(migration('202611150001_message_insert_integrity.sql'));
+  await db.exec(migration('202611160001_admin_account_management.sql'));
 });
 beforeEach(async () => {
   await db.exec('reset role; truncate auth.users cascade');
+  await db.exec('truncate findback_private.admin_provisions; update findback_private.admin_bootstrap set initialized=false');
   for (const [index, id] of [owner, claimant, stranger, admin].entries()) {
     await db.query("insert into auth.users(id,email,email_confirmed_at) values($1,$2,now())", [id, `student${index}@seu.edu.bd`]);
   }
@@ -56,6 +58,112 @@ beforeEach(async () => {
   }
 });
 after(async () => { if (db) await db.close(); });
+
+async function asService(sql, params = []) {
+  await db.exec('set role service_role');
+  try { return await query(sql, params); } finally { await db.exec('reset role'); }
+}
+const reserveAdmin = (email, actor = admin) => as(actor, 'select public.reserve_admin_account($1) value', [email]).then(rows => rows[0].value);
+const insertReservedAdmin = reservation => db.query("insert into auth.users(id,email,email_confirmed_at,raw_app_meta_data,raw_user_meta_data) values($1,$2,now(),'{\"findback_admin_provision\":true}','{\"full_name\":\"New Admin\"}')", [reservation.user_id, reservation.email]);
+const createAdmin = async (email, actor = admin) => { const reservation = await reserveAdmin(email, actor); await insertReservedAdmin(reservation); return reservation.user_id; };
+const removeAdmin = (id, actor = admin) => as(actor, 'select public.remove_admin_account($1)', [id]);
+
+test('accounts SQL: only active Admins may list, reserve, remove; browser cannot access bootstrap/private reservations', async () => {
+  for (const actor of [owner, null]) {
+    await assert.rejects(reserveAdmin('new@example.com', actor), /Admin required|permission denied/);
+    await assert.rejects(as(actor, 'select public.list_managed_admins()'), /Admin required|permission denied/);
+    await assert.rejects(removeAdmin(admin, actor), /Admin required|permission denied/);
+  }
+  await assert.rejects(as(admin, "select public.prepare_bootstrap_admin('new@example.com')"), /permission denied/);
+  await assert.rejects(as(admin, 'select * from findback_private.admin_provisions'), /permission denied/);
+  await db.query('update public.profiles set suspended_at=now() where id=$1', [admin]);
+  await assert.rejects(reserveAdmin('new@example.com'), /Admin required/);
+});
+test('accounts SQL: five-member cap covers normal provisioning and direct trusted inserts', async () => {
+  for (let n = 0; n < 4; n++) await createAdmin(`admin${n}@example.com`);
+  const [list] = await as(admin, 'select public.list_managed_admins() value');
+  assert.equal(list.value.limit, 5); assert.equal(list.value.admins.length, 5);
+  await assert.rejects(reserveAdmin('sixth@example.com'), /At most five/);
+  await assert.rejects(db.query('insert into public.admin_members(user_id) values($1)', [owner]), /At most five/);
+  assert.equal((await query('select count(*)::int n from public.admin_members'))[0].n, 5);
+});
+test('accounts SQL: concurrent pending slots count toward five and cancellation frees only the caller slot', async () => {
+  const second = await createAdmin('second@example.com');
+  const slots = [];
+  for (let n = 0; n < 3; n++) slots.push(await reserveAdmin(`pending${n}@example.com`));
+  await assert.rejects(reserveAdmin('overflow@example.com', second), /At most five/);
+  await as(second, 'select public.cancel_admin_reservation($1)', [slots[0].user_id]);
+  await assert.rejects(reserveAdmin('still-full@example.com'), /At most five/);
+  await as(admin, 'select public.cancel_admin_reservation($1)', [slots[0].user_id]);
+  await insertReservedAdmin(await reserveAdmin('replacement@example.com', second));
+});
+test('accounts SQL: general emails require the exact reserved UUID; user metadata cannot grant roles', async () => {
+  const reservation = await reserveAdmin('external@example.com');
+  await assert.rejects(db.query("insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) values($1,$2,now(),'{\"role\":\"admin\"}')", [uid(77), reservation.email]), /Only a valid/);
+  await assert.rejects(db.query("insert into auth.users(id,email,email_confirmed_at) values($1,'wrong@example.com',now())", [reservation.user_id]), /Only a valid/);
+  await db.query("insert into auth.users(id,email,email_confirmed_at,raw_user_meta_data) values($1,'normal@seu.edu.bd',now(),'{\"role\":\"admin\"}')", [uid(78)]);
+  assert.equal((await as(uid(78), 'select public.is_admin() value'))[0].value, false);
+  await insertReservedAdmin(reservation);
+  assert.equal((await as(reservation.user_id, 'select public.is_admin() admin,public.is_active_member() active'))[0].active, true);
+});
+test('accounts SQL: expired, cancelled or revoked-creator provisioning cannot create an Admin account', async () => {
+  const other = await createAdmin('other@example.com');
+  const expired = await reserveAdmin('expired@seu.edu.bd');
+  await db.query("update findback_private.admin_provisions set expires_at=now()-interval '1 second' where user_id=$1", [expired.user_id]);
+  await assert.rejects(insertReservedAdmin(expired), /expired/);
+  const cancelled = await reserveAdmin('cancelled@seu.edu.bd');
+  await as(admin, 'select public.cancel_admin_reservation($1)', [cancelled.user_id]);
+  await assert.rejects(insertReservedAdmin(cancelled), /expired/);
+  const revoked = await reserveAdmin('revoked@example.com');
+  await removeAdmin(admin, other);
+  await assert.rejects(insertReservedAdmin(revoked), /no longer has active access/);
+  assert.equal((await query('select count(*)::int n from auth.users where id=any($1)', [[expired.user_id, cancelled.user_id, revoked.user_id]]))[0].n, 0);
+});
+test('accounts SQL: Admins have equal removal powers; initial Admin removal preserves account/reports and frees a slot', async () => {
+  const second = await createAdmin('second@example.com');
+  await db.query("insert into public.reports(owner_id,type,title,category,location,occurred_on,description) values($1,'lost','Admin phone','Phone','Library',current_date,'Small case with a blue sticker')", [admin]);
+  await removeAdmin(admin, second);
+  assert.equal((await query('select count(*)::int n from auth.users where id=$1', [admin]))[0].n, 1);
+  assert.equal((await query('select count(*)::int n from public.reports where owner_id=$1', [admin]))[0].n, 1);
+  assert.equal((await as(admin, 'select public.is_admin() admin,public.is_active_member() active'))[0].active, true);
+  await assert.rejects(reserveAdmin('denied@example.com'), /Admin required/);
+  await createAdmin('replacement@example.com', second);
+  assert.equal((await query("select count(*)::int n from public.moderation_actions where action='Admin access removed'"))[0].n, 1);
+});
+test('accounts SQL: removed non-campus Admin loses member access; last active Admin cannot be removed', async () => {
+  const external = await createAdmin('external@example.com');
+  await removeAdmin(external);
+  assert.equal((await as(external, 'select public.is_active_member() active'))[0].active, false);
+  assert.equal((await query('select count(*)::int n from public.profiles where id=$1', [external]))[0].n, 1);
+  await assert.rejects(removeAdmin(admin), /last Admin/);
+  const suspended = await createAdmin('suspended@example.com');
+  await as(admin, "select public.set_member_suspended($1,true,'Administrator is temporarily unavailable')", [suspended]);
+  await assert.rejects(removeAdmin(admin), /at least one active Admin/);
+  await removeAdmin(suspended);
+});
+test('accounts SQL: existing account email cannot be taken over or have its password replaced through provisioning', async () => {
+  await assert.rejects(reserveAdmin('student0@seu.edu.bd'), /already has an account/);
+  assert.equal((await as(owner, 'select public.is_admin() value'))[0].value, false);
+});
+test('accounts SQL: one-time trusted bootstrap creates initial Admin and cannot restore it after removal', async () => {
+  await db.exec('truncate auth.users cascade; truncate findback_private.admin_provisions; update findback_private.admin_bootstrap set initialized=false');
+  const [row] = await asService("select public.prepare_bootstrap_admin('initial@example.com') value");
+  const initial = row.value.user_id; assert.equal(row.value.existing, false);
+  await insertReservedAdmin({ user_id: initial, email: 'initial@example.com' });
+  assert.equal((await asService('select public.admin_account_provisioned($1) value', [initial]))[0].value, true);
+  const second = await createAdmin('second@example.com', initial);
+  await removeAdmin(initial, second);
+  await assert.rejects(asService("select public.prepare_bootstrap_admin('initial@example.com')"), /already been used/);
+});
+test('accounts SQL: bootstrap can promote a verified existing account, never an unverified one', async () => {
+  await db.exec('truncate auth.users cascade; truncate findback_private.admin_provisions; update findback_private.admin_bootstrap set initialized=false');
+  await db.query("insert into auth.users(id,email) values($1,'initial@seu.edu.bd')", [owner]);
+  await assert.rejects(asService("select public.prepare_bootstrap_admin('initial@seu.edu.bd')"), /Verify the existing/);
+  await db.query('update auth.users set email_confirmed_at=now() where id=$1', [owner]);
+  const [row] = await asService("select public.prepare_bootstrap_admin('initial@seu.edu.bd') value");
+  assert.equal(row.value.user_id, owner); assert.equal(row.value.existing, true);
+  assert.equal((await as(owner, 'select public.is_admin() value'))[0].value, true);
+});
 
 test('security SQL: ID Card privacy migration requires real Storage cleanup before clearing references', async () => {
   const photo=owner+'/private-card.png';

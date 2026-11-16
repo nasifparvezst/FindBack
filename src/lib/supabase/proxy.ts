@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { preventSessionCaching } from "@/lib/http-security";
+import { REMEMBER_COOKIE, remembersSession, sessionCookieOptions } from "@/lib/session-preference";
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -14,7 +15,8 @@ export async function updateSession(request: NextRequest) {
       setAll(cookies, headers) {
         cookies.forEach(({ name, value }) => request.cookies.set(name, value));
         response = NextResponse.next({ request });
-        cookies.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+        const remember = remembersSession(request.cookies.get(REMEMBER_COOKIE)?.value);
+        cookies.forEach(({ name, value, options }) => response.cookies.set(name, value, sessionCookieOptions(options, remember)));
         Object.entries(headers).forEach(([name, value]) => response.headers.set(name, value));
       },
     },
