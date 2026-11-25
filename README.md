@@ -1,161 +1,255 @@
-# FindBack 2.0
+# FindBack
 
-A Next.js 16 + React 19 + TypeScript campus lost-and-found application with report management, Smart Matching, private claims/chat, two-party handover and Admin moderation.
+FindBack is a campus lost-and-found platform for Southeast University. Students can publish lost or found item reports, discover possible matches, communicate privately, submit claims, and complete a two-party handover. Administrators can moderate reports, review activity, and manage administrator access.
 
-> **Release status:** Phases 1–7 and the local FINAL AUDIT/FIX are complete. The real Supabase project now has all seven migrations, and live anonymous API/SQL access checks passed. Real account verification, signed-in Storage/Realtime, email delivery, real devices and deployment remain pending. See [the audit report](docs/FINAL_AUDIT.md) and [live Cloud status](docs/CLOUD_SETUP_STATUS.md).
+## Live website
 
-## Requirements
+Open the public production URL from any phone, computer, or browser:
 
-- Node.js 22 or later and npm (required by the locked Supabase client)
-- VS Code or another code editor
-- A Supabase project only when enabling cloud mode
+**https://findback-pi.vercel.app**
 
-## Run the demo locally
+This is the public production alias. Do not use a generated deployment URL such as `https://findback-<deployment-id>-nasifparvezst.vercel.app`; those URLs are protected by Vercel authentication and may work only in the owner's browser.
 
-1. Extract the ZIP.
-2. Open the extracted folder that contains `package.json` in VS Code.
-3. Copy `.env.example` to `.env.local`.
-4. Keep `NEXT_PUBLIC_DEMO_MODE=true` for the local demo.
-5. Open **Terminal > New Terminal** and run:
+The project is deployed in Vercel project `nasifparvezst/findback` and uses the real Supabase Cloud project. The current deployment is a pilot release for real-user testing. Record bugs from the live site and deploy focused fixes after review.
 
-```sh
+## What the application does
+
+### Student accounts
+
+- Students create accounts with a verified `@seu.edu.bd` email address.
+- Students can sign in with email/password or Google. Google sign-in remains restricted to campus email accounts by the database rules.
+- Password fields include visibility controls and browser password-manager support.
+- “Remember me” controls whether the Supabase session survives browser restarts. Passwords are never stored in localStorage or returned by the application.
+- Password recovery uses the Supabase email flow.
+
+### Lost-and-found reports
+
+- Create Lost or Found reports with title, category, location, date, description, contact phone, and an optional photograph.
+- Browse public open reports with search, category/type filters, sorting, and pagination.
+- Edit or remove your own reports when the workflow permits it.
+- Photo processing compresses supported images before upload.
+- ID-card photographs are blocked from public report storage to reduce identity exposure.
+- Replacing or removing a photograph cleans up the old cloud object when possible.
+
+### Smart Matching
+
+Smart Matching compares compatible Lost and Found reports from different owners. It normalizes Bangla and Unicode text, compares category/title/description/location signals, uses the configured 30-day date window, and explains positive and negative signals. Scores are shown out of 100; they are ranking hints, not proof of ownership.
+
+### Claims and handover
+
+- A student submits a claim with a message and can optionally relate another report.
+- The report owner reviews the claim and can approve or reject it.
+- The claim conversation is private to the two participants and authorized Admins.
+- Both parties must confirm the physical handover separately. Admins cannot confirm on behalf of either party.
+- Participants can cancel before confirmation, raise a dispute after confirmation starts, and continue a resolved dispute only through the Admin workflow.
+- Closed claims cannot receive new messages.
+
+### Private chat and notifications
+
+- Claim participants receive private chat messages and status notifications.
+- Messages use cursor-based history pages and a delivery UUID for idempotent retries.
+- Realtime events invalidate authorized queries; reconnect, tab focus, periodic refresh, and online recovery reconcile missed events.
+- Unread notification and message counts remain private to the signed-in user.
+
+### Admin moderation
+
+- Students can flag another member's visible report with a reason.
+- Admins can hide or restore reports, dismiss flags, suspend/restore members, and edit another member's report with an audited reason.
+- Hidden reports disappear from public browsing and matching while existing participants, the owner, and Admins retain the permitted private context.
+- Moderation actions, Admin changes, and reasons are recorded in an audit table.
+- Dashboard data uses bounded server-side pages, exact counts, stable cursors, and cancellable CSV export.
+
+### Admin account management
+
+- Any active Admin can open `/admin/accounts` and create another Admin with any valid email domain. The `@seu.edu.bd` restriction applies to students, not Admins.
+- There can be at most five Admins, including pending account-provisioning slots.
+- All Admins have equal power. Any active Admin can remove another Admin's role.
+- Removing a role keeps the Auth account, existing reports, claims, messages, and history. It only removes Admin access.
+- The last Admin and the last active Admin are protected from accidental lockout.
+- New Admin password accounts are created only by the server through the Supabase Admin API. The secret key is never sent to the browser.
+
+## Technology
+
+- Next.js 16 App Router
+- React 19 and TypeScript
+- Supabase Auth, PostgreSQL, Row Level Security, Storage, and Realtime
+- Vercel Node/Next.js deployment
+- PGlite and Node's test runner for focused SQL and logic tests
+- `lucide-react` for interface icons
+
+## How the data flow works
+
+1. The browser uses the Supabase publishable key and the signed-in user's Auth session.
+2. Supabase Auth creates or refreshes the session through the browser/SSR clients.
+3. The Cloud provider loads only the requested server page and related RLS-visible records.
+4. Mutations call guarded PostgreSQL RPCs. The database checks the authenticated user, active membership, report ownership, claim participants, and Admin membership.
+5. Storage policies keep report photographs separate from private records. ID-card images are rejected by both application and database constraints.
+6. Realtime events trigger a fresh authorized query; event payloads are not copied directly into shared state.
+7. Server-only Admin routes use the Supabase secret key only after verifying the current session and database Admin membership.
+
+## Run locally
+
+### Requirements
+
+- Node.js 22 or newer
+- npm
+- VS Code or another editor
+
+### Demo mode
+
+Demo mode is browser-local and does not create real accounts or shared cloud data.
+
+```powershell
 npm ci
 npm run dev
 ```
 
-6. Open http://localhost:3000. Stop the server with `Ctrl + C`.
+Open `http://localhost:3000` on the same computer. `localhost` is intentionally local to that device; opening `http://localhost:3000` on a phone points to the phone itself and will not open the PC's server.
 
-On Windows PowerShell, use `npm.cmd` in place of `npm` if execution policy blocks `npm.ps1`. The committed `package-lock.json` pins the dependency versions used by `npm ci`.
+To test from another device on the same Wi-Fi, start Next with a LAN bind address and use the PC's LAN IP instead:
 
-## Enable the shared Supabase database
-
-Read `docs/STEP2_SETUP.md`. In summary:
-
-1. Create a new Supabase project and enable email confirmation.
-2. Run migrations in filename order:
-   - `supabase/migrations/202611050001_initial.sql`
-   - `supabase/migrations/202611060001_report_management_privacy.sql`
-   - `supabase/migrations/202611120001_two_party_handover.sql`
-   - `supabase/migrations/202611130001_private_chat_realtime.sql`
-   - `supabase/migrations/202611130002_admin_moderation.sql`
-   - `supabase/migrations/202611130003_paged_data.sql`
-   - `supabase/migrations/202611150001_message_insert_integrity.sql`
-3. Configure the email confirmation and password recovery templates/redirect URLs.
-4. Copy the Supabase Project URL and publishable key into `.env.local`.
-5. Set `NEXT_PUBLIC_DEMO_MODE=false` and restart the dev server.
-6. Register and verify two separate `@seu.edu.bd` accounts and test the workflow described in `docs/SECURITY_TEST_CHECKLIST.md`.
-
-Do not place a service-role key in any `NEXT_PUBLIC_*` variable or browser code. Do not share `.env.local`.
-
-## Step 3 features
-
-- Lost and found report create, edit and delete workflows
-- Photo compression and cloud storage upload
-- Soft duplicate-report warnings before submission
-- ID Card photo upload blocked to protect personal information
-- Browse filters, sorting and pagination
-- My Reports search, status filters, claim tabs and pagination
-- Old cloud photo cleanup after a report photo is replaced or removed
-- Database constraint that prevents public ID Card photos
-
-## Included project structure
-
-```text
-src/                 Next.js pages, components, providers and utilities
-public/              Static assets such as the FindBack logo
-supabase/migrations/ Database schema and security migrations
-tests/               Automated logic tests
-docs/                Setup, database and security documentation
+```powershell
+npm run dev -- --hostname 0.0.0.0
 ```
 
-The project ZIP intentionally excludes generated folders (`node_modules`, `.next`), local secrets (`.env.local`), the old V4 source backup and the obsolete static design preview. `npm install` creates `node_modules`; running Next.js creates `.next`.
+Then open `http://<your-PC-LAN-IP>:3000`. Windows Firewall must allow the Node process on the private network. For public access, use the deployed URL above instead of exposing the development server.
+
+### Cloud mode
+
+Copy `.env.example` to `.env.local`, then configure:
+
+```env
+NEXT_PUBLIC_DEMO_MODE=false
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+APP_ORIGIN=http://localhost:3000
+
+# Server-only values. Never use NEXT_PUBLIC_ for these.
+SUPABASE_SECRET_KEY=your-server-only-secret-key
+BOOTSTRAP_ADMIN_EMAIL=2023100000534@seu.edu.bd
+BOOTSTRAP_ADMIN_PASSWORD=choose-a-12-character-or-longer-password
+```
+
+Restart the dev server after changing environment variables. Never commit or share `.env.local`.
+
+The live project already has the migrations listed below. Do not rerun already-applied migrations in the live database.
+
+## Database migrations
+
+Apply new migrations in filename order in a fresh project:
+
+1. `supabase/migrations/202611050001_initial.sql`
+2. `supabase/migrations/202611060001_report_management_privacy.sql`
+3. `supabase/migrations/202611120001_two_party_handover.sql`
+4. `supabase/migrations/202611130001_private_chat_realtime.sql`
+5. `supabase/migrations/202611130002_admin_moderation.sql`
+6. `supabase/migrations/202611130003_paged_data.sql`
+7. `supabase/migrations/202611150001_message_insert_integrity.sql`
+8. `supabase/migrations/202611160001_admin_account_management.sql`
+9. `supabase/migrations/202611160002_admin_auth_transaction.sql`
+
+The remote migration versions and live setup notes are recorded in [`docs/CLOUD_SETUP_STATUS.md`](docs/CLOUD_SETUP_STATUS.md). Review each migration before applying it to a different Supabase project.
+
+## Google sign-in setup
+
+1. Create a Google Auth Platform Web OAuth client.
+2. Add the application's production origin and local origin as authorized JavaScript origins.
+3. Add this Supabase callback as an authorized redirect URI:
+
+   `https://pxdzaapokjtocnplqmmd.supabase.co/auth/v1/callback`
+
+4. Enable Google under Supabase **Authentication → Sign In / Providers → Google** and save the Google Client ID and Client Secret there.
+5. Set the Supabase Site URL to `https://findback-pi.vercel.app` and allow the production/local callback patterns required by the app.
+
+The application sends `hd=seu.edu.bd` to help users choose the campus account, but the database remains the final access-control check.
+
+## Admin bootstrap
+
+The initial Admin email is configured through the ignored server environment. After the migration is applied and the local server-only secret/password are set, run:
+
+```powershell
+npm run admin:bootstrap
+```
+
+This is an explicit command, not startup behavior. It can promote the verified initial account or set its configured password. It cannot restore a removed initial Admin after the one-time bootstrap has been consumed.
+
+## Deploying to Vercel
+
+The current public production alias is:
+
+```text
+https://findback-pi.vercel.app
+```
+
+Configure the Vercel project with:
+
+- Framework: Next.js
+- Node: 24.x (or a supported newer version)
+- Install: `npm ci`
+- Build: `npm run build`
+- `NEXT_PUBLIC_DEMO_MODE=false`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SECRET_KEY` as a server-only Secret
+- `APP_ORIGIN=https://findback-pi.vercel.app`
+
+The Vercel project is currently deployed manually from `codex/baseline-audit`; automatic Git deployment is not connected. A focused change should be tested, committed, pushed, and then deployed again with the Vercel project. Use the production alias when checking the site from a phone. Generated deployment URLs can remain protected by Vercel authentication.
+
+The `.vercelignore` file excludes local environment files, generated build/test folders, credentials, and project-link metadata from uploads.
 
 ## Useful commands
 
-```sh
+```powershell
 npm run dev
 npm run typecheck
 npm run lint
 npm test
+npm run test:accounts
 npm run test:claims
 npm run test:chat
 npm run test:admin
 npm run test:paging
 npm run test:ui
 npm run test:security
-npm run e2e:demo
-npm run release:check -- --mode demo
+npm run cloud:check
+npm run release:check -- --mode cloud
 npm run build
 ```
 
-`npm test` runs the existing logic and disposable database tests, including claims and chat. Passing local tests do not replace live Supabase RLS, Auth, Storage or browser end-to-end testing.
+Use targeted tests for focused changes. Run a full project audit only when explicitly requested with `FINAL AUDIT`.
 
-`npm run typecheck` generates Next.js route types before checking TypeScript, so it also works before the first dev server or production build. Lint excludes generated `.test-build` output and supports the Node test runner's CommonJS test files.
+## Project structure
 
-`npm run test:claims` runs only the claim state-machine and disposable PostgreSQL/RLS tests. PGlite is a development-only dependency; the tests simulate Supabase-managed Auth/Storage schemas locally and do not connect to your Supabase project. Its single connection does not reproduce concurrent transactions on a live server.
+```text
+src/app/                 Next.js routes, Auth callbacks, Admin API, and pages
+src/components/          Reusable UI, authentication, chat, and Admin components
+src/context/             Demo and Cloud providers/AppStore
+src/lib/                 Matching, validation, workflows, Supabase, security utilities
+public/                  Static assets and the FindBack logo
+supabase/migrations/     PostgreSQL schema, RLS, RPC, trigger, and Realtime migrations
+tests/                   Logic, SQL, security, usability, and browser checks
+docs/                    Setup, deployment, security, matching, and live-status notes
+scripts/                 Bootstrap and release helper scripts
+```
 
-Use the targeted command relevant to the current change. The full suite, build and full-project lint are reserved for an explicitly requested FINAL AUDIT.
+## Security rules
 
-## Phase 2 handover
+- Never commit `.env.local`, Supabase secret/service-role keys, Google Client Secrets, or Vercel tokens.
+- Never put a server-only key in a `NEXT_PUBLIC_*` variable.
+- Treat the browser as untrusted; Admin status comes from the database, not client metadata.
+- Keep RLS enabled on all application tables.
+- Do not upload identity-document photographs.
+- Use HTTPS in production and keep `APP_ORIGIN` set to the exact deployed origin.
+- Do not reset or delete an existing Auth account through the Admin creation form; use a new email for a new Admin.
 
-The claim page records owner and claimant confirmations separately; both are required before completing the claim and returning its linked reports. A Lost report owner confirms receiving; a Found report owner confirms handing over. Admins cannot confirm for another party. Cancel is available before either confirmation; afterward, participants can raise a dispute. Admin dispute resolution requires a reason and audit entry, and resuming clears prior confirmations so both parties must confirm again. Closed claims cannot send messages.
+## Deliberate scope limits
 
-Cloud mode requires the third migration above. It preserves existing reports/claims/messages, adds confirmation/review/dispute timestamps and statuses, protects reserved reports, and disables the legacy one-party completion RPC. Previously completed claims remain historical records; existing approved claims require fresh confirmations. The migration stops without changing data if it finds overlapping approved reservations. Apply it once after review; rolling back later requires reconciling new claim states rather than rerunning old migrations.
+The current scope does not include campus maps/location navigation, QR-code handover, AI image matching, or advanced student profile features. Smart Matching is text/date/category based and is a decision aid rather than an ownership decision.
 
-## Phase 3 private chat and notifications
+## Documentation
 
-Cloud mode subscribes to authorized claim changes, the signed-in recipient's notifications, and messages for the open conversation. Subscriptions are removed on account/conversation changes and unmount. Events trigger authorized database reads; periodic refresh, returning to the tab and reconnect reconcile missed updates. Chat history loads the latest 50 messages, with cursor-based older pages and multi-page reconnect catch-up. Message retries reuse a delivery UUID to prevent duplicate messages and alerts.
-
-The header and claim list show unread counts. Opening a visible conversation at its newest messages reads message alerts through the displayed cursor; claim-status alerts and later arrivals remain unread. Admin messages notify both participants. Notifications now use 20-entry server pages without a snapshot cap; unread totals include all records.
-
-Apply the fourth migration after the earlier three before enabling Cloud mode. It adds message-linked alerts and RPCs and includes `messages`, `claims` and `notifications` in the Supabase Realtime publication without weakening RLS. `npm run test:chat` runs the targeted chat logic and PostgreSQL tests; mock subscriptions verify reconnect/cleanup behavior, while local PostgreSQL verifies pagination, read cursors, idempotency and access control. Actual Supabase WebSocket delivery still requires a configured project and two devices. See `docs/STEP2_SETUP.md`.
-
-## Phase 4 Admin moderation and analytics
-
-Students can privately flag another member's visible report, with one open flag per reporter/report. Admins can dismiss a flag or hide/restore a report with a required reason and audit entry. Hiding resolves its open flags, notifies the owner and reporters, and preserves reports, claims and messages. Hidden reports leave public Browse/Home/Smart Matches; existing claim participants, the owner and Admin retain access. New claims and handover pause until all linked reports are restored; private chat and cancellation/disputes remain available.
-
-Admin suspension/restoration and editing another member's report require audit reasons. Admins moderate other members' reports through hide/restore instead of permanent deletion. Owners cannot delete hidden reports or reports with open flags. Existing owner editing remains available, and editing never automatically restores a hidden report. Hiding does not revoke previously shared public Storage image URLs.
-
-Dashboard tables support server filters, search and pagination; CSV exports all filtered reports without contact data and neutralizes spreadsheet formulas. Date-filtered metrics and six-month/category charts use a full-database Admin-only aggregate RPC. Dates use UTC; users and open flags are counted across all dates. Apply the fifth migration after the first four before enabling Cloud mode. `npm run test:admin` runs the targeted moderation tests without the complete suite.
-
-## Phase 5 paged data and reliability
-
-Cloud startup loads four recent public reports and exact public/personal counts. Browse, My Reports, incoming/outgoing claims, notifications and every Admin table query only the selected server page, with filters applied before counting/pagination. Pages use stable ID tie-breakers, exact totals and bounds of 1–100 rows; unavailable last pages clamp after deletions. Page bundles hydrate only their related reports/profiles and RLS-visible fields. Direct item/edit/claim routes fetch their IDs instead of depending on a recent-record snapshot. The browser discards pages on filter/account changes and aborts obsolete requests; failed requests offer Retry.
-
-Cloud Smart Matching selects an open source report, then ranks each 25-candidate page with the existing Phase 1 score. Candidates are filtered by category, opposite type, owner, visibility and the 30-day window. Source reports are searchable and paged, so older reports remain reachable. Scores rank the current candidate page, not all campus pairs globally. Duplicate warnings examine 100 compatible reports per page within the existing 14-day window; the form can browse further candidate pages. Optional related reports in a claim are also paged. Demo mode retains its browser-local data flow.
-
-Admin CSV walks every filtered report page using `(created_at,id)` cursors and a server timestamp, supports cancellation, and downloads only after all pages succeed. Newer inserts are excluded; updates/deletions during export reflect the state when fetched, not a transaction-wide snapshot. Normal browsing never automatically downloads an entire table.
-
-Apply the sixth migration once after the earlier five. `npm run test:paging` verifies paging beyond 500, literal search/filter/sort, RLS, direct contexts, complete exports, cancellation and decoding. Browser verification used an isolated local PGlite API with stand-in Auth responses; it does not establish live Supabase authentication or WebSocket delivery.
-
-## Phase 6 mobile, keyboard and feedback
-
-The app includes a skip link, route-change focus, current-page navigation, and a mobile menu with expanded state, Escape/outside close and keyboard focus restoration. Account access remains visible on narrow screens. Controls and tables have visible focus, readable supporting text, touch targets, captions/column headers and keyboard-scrollable regions. Narrow filters/date labels, notification actions, long content and status badges reflow without page-wide horizontal overflow. Reduced-motion preferences disable smooth scrolling and transitions.
-
-Report validation keeps the existing rules and provider error messages, adding field-linked summaries, inline errors/hints and focus to the error summary. Photo processing announces progress and prevents premature submission; stale image processing cannot reattach a photo after category changes or navigation. Admin/flag forms focus the reason field and restore useful feedback focus. Chat keeps keyboard access to history, shows message times and send feedback, and returns focus to the composer while retaining a failed draft.
-
-Paged UI retains only counters across same-filter page requests; old rows stay hidden, and a different filter/account cannot inherit counters. Controls remain mounted while loading, announce page changes and return focus to visible feedback after Retry. Demo guest choice now persists explicitly across reloads; missing storage still gives the existing first-use default, while unavailable users remain signed out.
-
-`npm run test:ui` tests guest persistence, counter scopes and the structured validation contract. Targeted Chromium checks covered keyboard/accessible-tree state, 320–1280px layouts, form/photo feedback, table scrolling, chat/notification wrapping, selected text contrast, reduced motion, loading/Retry and stale responses. The paging checks used a small isolated provider fixture importing the actual components. This is not a full accessibility certification; physical iOS/Android and NVDA/VoiceOver verification remain pending. No backend schema changes were introduced in Phase 6.
-
-## Phase 7 security and release preparation
-
-Responses carry CSP, frame/content-type protections and restricted browser permissions. Auth redirects use fixed destinations, show safe confirmation/callback feedback, and disable caching. Cloud session refresh preserves Supabase's cookie/cache headers and disables shared caching. Production Cloud builds require a valid HTTPS Supabase URL, a publishable/legacy anon key and the server-only `APP_ORIGIN`; malformed settings and public secret/service-role keys fail early. The CSP allows inline Next.js scripts/styles, so it is defense in depth rather than a complete XSS barrier. See `docs/SECURITY_NOTES.md`.
-
-`npm run test:security` covers configuration, redirects, cache headers and focused SQL security boundaries. `npm run e2e:demo` uses installed Chrome/Chromium in a fresh temporary profile against a loopback Demo server; start `npm run dev -- --hostname 127.0.0.1 --port 3100` first. It checks real HTTP headers/Auth failures, report/photo creation, inert report text, matching, claim/chat access and two-party completion. Use `E2E_BASE_URL` to change the local origin or `CHROME_PATH` for another Chrome executable. Results and failure screenshots are ignored under `.test-build/e2e/`. This flow does not verify real Cloud authentication or email.
-
-Set deployment environment values, then run `npm run release:check -- --mode demo` or `--mode cloud`. This checks configuration only and requires an explicit `NEXT_PUBLIC_DEMO_MODE`. `.github/workflows/release-checks.yml` provides a manual GitHub Actions version of the targeted checks; it does not deploy or run the full audit. The workflow has not been executed on GitHub. Remaining release checks are tracked in `docs/SECURITY_TEST_CHECKLIST.md`.
-
-## Final audit and fixes
-
-The final audit adds a seventh migration for message insertion: it serializes inserts with claim closure and assigns authenticated messages server timestamps while preserving participant RLS. The second migration now requires existing ID Card photos to be removed via Storage API/Dashboard before clearing report references. Apply only migrations not already applied; see `docs/STEP2_SETUP.md`.
-
-## Scope decisions
-
-Campus maps/location finder, advanced student profile features, QR handover and AI image matching are not included in the agreed scope. The Advanced Admin Dashboard remains part of the project.
-
-## Smart Matching and deployment
-
-Smart Matching compares open reports from different owners, normalizes Bangla/Unicode text, explains positive and negative signals, and uses a configurable 30-day date window. Scores are shown out of 100. Read `docs/SMART_MATCHING.md` for weights, confidence limits and tests.
-
-Pushing to GitHub stores code; a hosting deployment is a separate step. This app uses dynamic routes, Auth callbacks and a session proxy, so deploy it with a Next.js-compatible Node host. The current app cannot be published by uploading its source to static GitHub Pages. The Bangla guide in `docs/DEPLOYMENT_BN.md` explains a Demo deployment and later Cloud setup, including how to preview `codex/baseline-audit` before merging it into `main`.
+- [`docs/CLOUD_SETUP_STATUS.md`](docs/CLOUD_SETUP_STATUS.md) — live Supabase and Vercel status
+- [`docs/DEPLOYMENT_BN.md`](docs/DEPLOYMENT_BN.md) — Bengali deployment guide
+- [`docs/STEP2_SETUP.md`](docs/STEP2_SETUP.md) — Supabase setup and Auth templates
+- [`docs/SECURITY_TEST_CHECKLIST.md`](docs/SECURITY_TEST_CHECKLIST.md) — live security test checklist
+- [`docs/SMART_MATCHING.md`](docs/SMART_MATCHING.md) — matching weights and behavior

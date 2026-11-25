@@ -1,6 +1,6 @@
 # Live Cloud setup status
 
-Updated 16 November 2026 (Asia/Omsk). Project: `pxdzaapokjtocnplqmmd`.
+Updated 25 November 2026 (Asia/Omsk). Project: `pxdzaapokjtocnplqmmd`.
 
 ## Completed
 
@@ -64,6 +64,13 @@ Two warning categories remain for intentional API functions: anonymous callers c
 - Public HTTP verification: Home/login/register 200; unauthenticated Admin API 401; missing-code callback redirects to production login; correct-origin unauthenticated create 401 and foreign-origin create 403. An isolated production Chrome check verified Cloud forms, Google button, password controls and mobile layout without captured runtime/CSP errors.
 - Real production Admin integration passed: general-email Auth account creation, HTTPS-cookie sign-in, Admin GET 200/create 201/remove 200 and sign-in/role verification of the newly created Admin. Both temporary accounts, reservations and application audit fixtures were removed; the pre-test count of two existing Admins was restored.
 - The user confirmed successful Google sign-in on the live website. Real-user pilot usage and bug notes can now proceed.
+
+## Cross-device access diagnosis (25 November)
+
+- The public production alias `https://findback-pi.vercel.app` returns HTTP 200 without a Vercel session and is the URL that must be shared with phones and other computers.
+- The generated deployment URL `https://findback-6zzc3qhn6-nasifparvezst.vercel.app` redirects to Vercel SSO. It can work in the owner's Chrome because that browser has a Vercel session, but it is not a public pilot URL.
+- `http://localhost:3000` is local to the device where Next.js is running. Opening that address on a phone points to the phone itself. The README now documents the LAN-development alternative and the public production URL.
+- Vercel SSO was not disabled because the automatic safety review rejected a persistent access-control weakening. No production data or application code was changed for this diagnosis.
 
 ## Still pending
 
